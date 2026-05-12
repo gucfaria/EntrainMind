@@ -1459,31 +1459,31 @@ function cancelCustomPress() {
   const ring = document.getElementById('ring-wrap');
   if (!ring) return;
 
-  let dragging = false;
+  const DRAG_THRESHOLD = 8; // px mínimos para considerar drag
+  const MIN_DUR = 1, MAX_DUR = 60;
+  let pressing = false;
+  let isDrag = false;
   let startY = 0;
   let startDur = 0;
-  const MIN_DUR = 1, MAX_DUR = 60;
 
   function getDurMin() { return Math.round(sessionDuration / 60); }
-
-  function pointerY(e) {
-    return e.touches ? e.touches[0].clientY : e.clientY;
-  }
+  function pointerY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
 
   function onStart(e) {
-    dragging = true;
+    pressing = true;
+    isDrag = false;
     startY = pointerY(e);
     startDur = getDurMin();
-    ring.style.cursor = 'ns-resize';
-    e.preventDefault();
   }
+
   function onMove(e) {
-    if (!dragging) return;
-    const dy = startY - pointerY(e); // arrastar para cima = mais tempo
-    const delta = Math.round(dy / 8); // 8px por minuto
+    if (!pressing) return;
+    const dy = startY - pointerY(e);
+    if (!isDrag && Math.abs(dy) < DRAG_THRESHOLD) return;
+    isDrag = true;
+    const delta = Math.round(dy / 8);
     let newDur = Math.max(MIN_DUR, Math.min(MAX_DUR, startDur + delta));
     if (newDur !== getDurMin()) {
-      // Desligar infinito se estava ativo
       if (infiniteMode) {
         infiniteMode = false;
         const btnInf = document.getElementById('btn-inf');
@@ -1495,29 +1495,25 @@ function cancelCustomPress() {
       timeRemaining = sessionDuration;
       updateTimerDisplay(timeRemaining);
       updateRing(1);
-      document.querySelectorAll('#dur-pills .pill').forEach(p => p.classList.remove('active'));
-      const pill = [...document.querySelectorAll('#dur-pills .pill')]
-        .find(p => p.textContent.trim() === newDur + "'");
-      if (pill) pill.classList.add('active');
     }
     e.preventDefault();
   }
-  function onEnd() {
-    dragging = false;
-    ring.style.cursor = 'ns-resize';
+
+  function onEnd(e) {
+    if (pressing && !isDrag) {
+      // Foi um tap — iniciar/encerrar sessão
+      toggleSession();
+    }
+    pressing = false;
+    isDrag = false;
   }
 
   ring.addEventListener('mousedown', onStart);
-  ring.addEventListener('touchstart', onStart, { passive: false });
+  ring.addEventListener('touchstart', onStart, { passive: true });
   window.addEventListener('mousemove', onMove);
   window.addEventListener('touchmove', onMove, { passive: false });
   window.addEventListener('mouseup', onEnd);
   window.addEventListener('touchend', onEnd);
-
-  // Clique no ring = toggle sessão
-  ring.addEventListener('click', function(e) {
-    if (!dragging) toggleSession();
-  });
 })();
 
 // ── BIN / FLK circular buttons ────────────────────────────────────────
