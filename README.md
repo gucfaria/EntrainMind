@@ -24,7 +24,7 @@ Flicker fótico + ruído AM + binaural beats — PWA configurável e offline.
 
 ### GitHub Pages
 
-**App:** `https://gucfaria.github.io/EntrainMind/entrainmind.html`
+**App:** `https://gucfaria.github.io/EntrainMind/index.html`
 
 **Manual:** `https://gucfaria.github.io/EntrainMind/manual.html`
 
@@ -37,7 +37,7 @@ cd ~/Documents
 python -m http.server 8080
 ```
 
-Abrir `http://localhost:8080/entrainmind.html` no Chrome.
+Abrir `http://localhost:8080/index.html` no Chrome.
 
 ## ⚠️ Segurança
 
@@ -51,7 +51,7 @@ Modo binaural requer fones de ouvido.
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `entrainmind.html` | Aplicação principal |
+| `index.html` | Aplicação principal |
 | `manual.html` | Manual de uso |
 | `manifest.json` | PWA manifest |
 | `sw.js` | Service Worker (cache offline) |

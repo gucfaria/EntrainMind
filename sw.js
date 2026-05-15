@@ -1,6 +1,6 @@
-const CACHE = 'entrainmind-v5';
+const CACHE = 'entrainmind-v2';
 const ASSETS = [
-  './entrainmind.html',
+  './index.html',
   './manual.html',
   './manifest.json',
   'https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600&display=swap'
@@ -32,7 +32,7 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(cache => cache.put(e.request, clone));
         }
         return response;
-      }).catch(() => caches.match('./entrainmind.html'));
+      }).catch(() => caches.match('./index.html'));
     })
   );
 });
