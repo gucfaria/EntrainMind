@@ -831,10 +831,12 @@ function makeNoiseBuffer(ctx, type) {
 function initAudio() {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // iOS silent mode bypass
-  const silentBuf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+  // iOS silent mode bypass + keep AudioContext alive in background
+  // Buffer de 0.5s de silêncio em loop contínuo — sinaliza ao iOS que há áudio ativo
+  const silentBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.5, audioCtx.sampleRate);
   const silentSrc = audioCtx.createBufferSource();
   silentSrc.buffer = silentBuf;
+  silentSrc.loop = true;
   silentSrc.connect(audioCtx.destination);
   silentSrc.start(0);
 
@@ -1370,23 +1372,39 @@ function startSession() {
   initAudio();
   startFlicker();
 
+  // Timer baseado em Date.now() — robusto a throttling em segundo plano
+  const sessionStartTime = Date.now();
+  const sessionStartRemaining = timeRemaining;
+
   timerInterval = setInterval(() => {
-    elapsedSeconds++;
+    const wallSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+    elapsedSeconds = wallSeconds;
+
     if (infiniteMode) {
-      // Cronômetro progressivo
       updateTimerDisplay(elapsedSeconds);
       document.getElementById('fs-timer').textContent = formatTime(elapsedSeconds);
-      // Anel pulsa suavemente — vai até 30min e reinicia visualmente
       const ringFraction = (elapsedSeconds % 1800) / 1800;
       updateRing(ringFraction);
     } else {
-      timeRemaining--;
+      timeRemaining = Math.max(0, sessionStartRemaining - wallSeconds);
       updateTimerDisplay(timeRemaining);
       updateRing(timeRemaining / sessionDuration);
       if (timeRemaining <= 0) stopSession();
     }
-  }, 1000);
+  }, 500); // 500ms para recalcular rapidamente ao voltar do background
 }
+
+// ── BACKGROUND / FOREGROUND ──────────────────────────
+// Reativa AudioContext ao voltar do segundo plano (iOS suspende automaticamente)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isRunning && audioCtx) {
+    audioCtx.resume().catch(() => {});
+    // Reacquire wake lock se foi liberado pelo sistema
+    if (!wakeLock && 'wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
+    }
+  }
+});
 
 // ── CUSTOM SLOT PRESS LONGO ──────────────────────────
 let _pressTimer = null;
