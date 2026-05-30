@@ -717,7 +717,7 @@
     <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
   </div>
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.05.30f
+    v2026.05.30g
   </div>
 
   <div class="warning">
@@ -1660,16 +1660,16 @@ function dbgUpdateState() {
 function applyAudioSession() {
   if (!navigator.audioSession || !audioCtx) return;
   if (audioCtx.state === 'running') {
-    navigator.audioSession.type = backgroundMode ? 'playback' : 'ambient';
-    dbgLog('audioSession → ' + navigator.audioSession.type + ' (ctx: ' + audioCtx.state + ')');
+    navigator.audioSession.type = 'ambient';
+    dbgLog('audioSession → ambient (ctx: ' + audioCtx.state + ')');
     dbgUpdateState();
   } else {
     // Aguarda running via onstatechange
     audioCtx.addEventListener('statechange', function onStateChange() {
       if (audioCtx.state === 'running') {
         audioCtx.removeEventListener('statechange', onStateChange);
-        navigator.audioSession.type = backgroundMode ? 'playback' : 'ambient';
-        dbgLog('audioSession → ' + navigator.audioSession.type + ' (ctx chegou a running)');
+        navigator.audioSession.type = 'ambient';
+        dbgLog('audioSession → ambient (ctx chegou a running)');
         dbgUpdateState();
       }
     });
@@ -1684,9 +1684,9 @@ document.addEventListener('visibilitychange', () => {
       dbgLog('resume() OK | ctx: ' + audioCtx.state);
       dbgUpdateState();
       // Reaplicar audioSession após resume — iOS pode ter resetado
-      if (backgroundMode && navigator.audioSession) {
-        navigator.audioSession.type = 'playback';
-        dbgLog('audioSession reforçado → playback');
+      if (navigator.audioSession) {
+        navigator.audioSession.type = 'ambient';
+        dbgLog('audioSession reforçado → ambient');
       }
       if (!wakeLock && 'wakeLock' in navigator) {
         navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
