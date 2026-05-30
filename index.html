@@ -658,6 +658,9 @@
     <a href="manual.html" class="btn-nav">📖 MANUAL</a>
     <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
   </div>
+  <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
+    v2026.05.30b
+  </div>
 
   <div class="warning">
     <strong>⚠ EPILEPSIA FOTOSSENSÍVEL:</strong> não usar se você ou familiares têm epilepsia ou convulsões.
@@ -829,6 +832,10 @@ function makeNoiseBuffer(ctx, type) {
 
 // ── AUDIO INIT ─────────────────────────────────────────
 function initAudio() {
+  // Declara intenção de playback contínuo — aumenta chance de sobreviver em background no iOS
+  if (navigator.audioSession) {
+    navigator.audioSession.type = 'playback';
+  }
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
   // iOS silent mode bypass + keep AudioContext alive in background
