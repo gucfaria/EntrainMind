@@ -659,7 +659,7 @@
     <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
   </div>
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.05.30b
+    v2026.05.30c
   </div>
 
   <div class="warning">
@@ -834,7 +834,7 @@ function makeNoiseBuffer(ctx, type) {
 function initAudio() {
   // Declara intenção de playback contínuo — aumenta chance de sobreviver em background no iOS
   if (navigator.audioSession) {
-    navigator.audioSession.type = 'playback';
+    navigator.audioSession.type = 'ambient';
   }
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
