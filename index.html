@@ -717,7 +717,7 @@
     <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
   </div>
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.05.30e
+    v2026.05.30f
   </div>
 
   <div class="warning">
@@ -780,6 +780,16 @@
     </div>
 
     <div class="fs-divider"></div>
+  </div>
+
+  <div id="debug-panel" style="display:none; width:100%; max-width:320px; margin-top:4px;
+    font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:1px;">
+    <div style="display:flex; gap:16px; margin-bottom:6px; color:rgba(57,255,106,0.4);">
+      <span>CTX: <span id="debug-ctx" style="color:rgba(255,107,53,0.8)">—</span></span>
+      <span>SESSION: <span id="debug-session" style="color:rgba(57,255,106,0.6)">—</span></span>
+    </div>
+    <div id="debug-log" style="color:rgba(57,255,106,0.35); line-height:1.6; max-height:80px;
+      overflow-y:auto; border-top:1px solid rgba(57,255,106,0.08); padding-top:6px;"></div>
   </div>
 
   <button class="btn-stop-fs" onclick="stopSession()">ENCERRAR</button>
@@ -937,10 +947,6 @@ function makeNoiseBuffer(ctx, type) {
 
 // ── AUDIO INIT ─────────────────────────────────────────
 function initAudio() {
-  // audioSession: playback apenas se modo background ativo
-  if (navigator.audioSession) {
-    navigator.audioSession.type = backgroundMode ? 'playback' : 'ambient';
-  }
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
   // iOS silent mode bypass + keep AudioContext alive in background
@@ -1483,6 +1489,15 @@ function startSession() {
   else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
 
   initAudio();
+  // Aplicar audioSession após contexto confirmar running
+  audioCtx.resume().then(() => {
+    applyAudioSession();
+    dbgLog('initAudio: ctx=' + audioCtx.state);
+    dbgUpdateState();
+  }).catch(() => {
+    // Contexto ainda não liberado — onstatechange vai disparar dentro de applyAudioSession
+    applyAudioSession();
+  });
   startFlicker();
   syncFsControls();
 
@@ -1515,16 +1530,19 @@ function onBgModeToggle(enabled) {
   backgroundMode = enabled;
   const thumb = document.getElementById('bg-thumb-dot');
   const track = document.getElementById('bg-mode-thumb');
+  const panel = document.getElementById('debug-panel');
   if (enabled) {
     track.style.background = '#0d2a0d';
     track.style.borderColor = 'rgba(57,255,106,0.5)';
     thumb.style.background = 'var(--accent)';
     thumb.style.left = '18px';
+    if (panel) panel.style.display = 'block';
   } else {
     track.style.background = '#1a3a1a';
     track.style.borderColor = '#2a5a2a';
     thumb.style.background = '#2a5a2a';
     thumb.style.left = '2px';
+    if (panel) panel.style.display = 'none';
   }
 }
 
@@ -1618,14 +1636,64 @@ function syncFsControls() {
 }
 
 // ── BACKGROUND / FOREGROUND ──────────────────────────
-// Reativa AudioContext ao voltar do segundo plano (iOS suspende automaticamente)
+function dbgLog(msg) {
+  const el = document.getElementById('debug-log');
+  if (!el) return;
+  const now = new Date();
+  const ts = now.getHours().toString().padStart(2,'0') + ':' +
+             now.getMinutes().toString().padStart(2,'0') + ':' +
+             now.getSeconds().toString().padStart(2,'0');
+  el.innerHTML = '<span style="color:rgba(57,255,106,0.4)">[' + ts + ']</span> ' + msg + '<br>' + el.innerHTML;
+}
+
+function dbgUpdateState() {
+  const ctxState = document.getElementById('debug-ctx');
+  const sessState = document.getElementById('debug-session');
+  if (ctxState) ctxState.textContent = audioCtx ? audioCtx.state : 'null';
+  if (sessState) sessState.textContent = navigator.audioSession ? navigator.audioSession.type : 'n/a';
+  // Cor do estado
+  if (ctxState) ctxState.style.color = audioCtx && audioCtx.state === 'running'
+    ? 'rgba(57,255,106,0.8)' : 'rgba(255,107,53,0.8)';
+}
+
+// Aplica audioSession após confirmar que contexto está running
+function applyAudioSession() {
+  if (!navigator.audioSession || !audioCtx) return;
+  if (audioCtx.state === 'running') {
+    navigator.audioSession.type = backgroundMode ? 'playback' : 'ambient';
+    dbgLog('audioSession → ' + navigator.audioSession.type + ' (ctx: ' + audioCtx.state + ')');
+    dbgUpdateState();
+  } else {
+    // Aguarda running via onstatechange
+    audioCtx.addEventListener('statechange', function onStateChange() {
+      if (audioCtx.state === 'running') {
+        audioCtx.removeEventListener('statechange', onStateChange);
+        navigator.audioSession.type = backgroundMode ? 'playback' : 'ambient';
+        dbgLog('audioSession → ' + navigator.audioSession.type + ' (ctx chegou a running)');
+        dbgUpdateState();
+      }
+    });
+  }
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && isRunning && audioCtx) {
-    audioCtx.resume().catch(() => {});
-    // Reacquire wake lock se foi liberado pelo sistema
-    if (!wakeLock && 'wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
-    }
+  const state = document.visibilityState;
+  dbgLog('visibility → ' + state + (audioCtx ? ' | ctx: ' + audioCtx.state : ''));
+  if (state === 'visible' && isRunning && audioCtx) {
+    audioCtx.resume().then(() => {
+      dbgLog('resume() OK | ctx: ' + audioCtx.state);
+      dbgUpdateState();
+      // Reaplicar audioSession após resume — iOS pode ter resetado
+      if (backgroundMode && navigator.audioSession) {
+        navigator.audioSession.type = 'playback';
+        dbgLog('audioSession reforçado → playback');
+      }
+      if (!wakeLock && 'wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
+      }
+    }).catch(e => dbgLog('resume() ERRO: ' + e.message));
+  } else if (state === 'hidden') {
+    dbgUpdateState();
   }
 });
 
