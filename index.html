@@ -179,6 +179,47 @@
     color: rgba(255,107,53,0.6); font-family: 'Share Tech Mono', monospace;
     font-size: 11px; letter-spacing: 3px; cursor: pointer;
   }
+  /* Controles in-session */
+  #fs-controls {
+    width: 100%; max-width: 320px;
+    display: flex; flex-direction: column; gap: 14px;
+    margin-top: 8px;
+  }
+  .fs-ctrl-label {
+    font-family: 'Share Tech Mono', monospace; font-size: 9px;
+    color: rgba(57,255,106,0.35); letter-spacing: 3px; text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .fs-ctrl-row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .fs-ctrl-val {
+    font-family: 'Share Tech Mono', monospace; font-size: 10px;
+    color: rgba(57,255,106,0.5); letter-spacing: 1px; min-width: 34px; text-align: right;
+  }
+  .fs-range {
+    -webkit-appearance: none; appearance: none;
+    flex: 1; height: 2px; background: rgba(57,255,106,0.15); border-radius: 2px; outline: none;
+  }
+  .fs-range::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: #000; border: 1.5px solid rgba(57,255,106,0.7); cursor: pointer;
+  }
+  .fs-noise-pills { display: flex; gap: 6px; }
+  .fs-pill {
+    padding: 4px 10px; border-radius: 20px;
+    border: 1px solid rgba(57,255,106,0.2); background: transparent;
+    font-family: 'Share Tech Mono', monospace; font-size: 9px;
+    color: rgba(57,255,106,0.4); letter-spacing: 1px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .fs-pill.active {
+    border-color: rgba(57,255,106,0.7); color: rgba(57,255,106,0.9);
+    background: rgba(57,255,106,0.08);
+  }
+  .fs-divider {
+    width: 100%; height: 1px; background: rgba(57,255,106,0.06); margin: 2px 0;
+  }
 
 
   /* PRESETS */
@@ -654,12 +695,29 @@
 
 
 
+  <!-- Modo background -->
+  <div style="margin-top:16px; padding:14px; border:1px solid #1a3a1a; border-radius:8px; background:#050d05;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <span style="font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px;">MODO BACKGROUND</span>
+      <label style="position:relative; display:inline-block; width:36px; height:20px;">
+        <input type="checkbox" id="bg-mode-toggle" onchange="onBgModeToggle(this.checked)" style="opacity:0;width:0;height:0;">
+        <span id="bg-mode-thumb" style="position:absolute;inset:0;border-radius:20px;background:#1a3a1a;border:1px solid #2a5a2a;cursor:pointer;transition:all 0.2s;">
+          <span style="position:absolute;left:2px;top:50%;transform:translateY(-50%);width:14px;height:14px;border-radius:50%;background:#2a5a2a;transition:all 0.2s;" id="bg-thumb-dot"></span>
+        </span>
+      </label>
+    </div>
+    <div style="font-size:10px; color:rgba(106,170,106,0.5); line-height:1.5;">
+      Mantém o áudio ativo ao minimizar o app.<br>
+      <span style="color:rgba(255,107,53,0.6);">⚠ Interrompe o Spotify e outros apps de áudio.</span>
+    </div>
+  </div>
+
   <div class="nav-row">
     <a href="manual.html" class="btn-nav">📖 MANUAL</a>
     <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
   </div>
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.05.30c
+    v2026.05.30e
   </div>
 
   <div class="warning">
@@ -677,6 +735,53 @@
   <div id="silent-warning" style="display:none; font-family:'Share Tech Mono',monospace; font-size:10px; color:rgba(255,107,53,0.8); letter-spacing:2px; text-align:center; padding:0 24px; margin-top:4px;">
     ⚠ iOS: DESATIVE O MODO SILENCIOSO PARA ÁUDIO
   </div>
+
+  <div id="fs-controls">
+    <div class="fs-divider"></div>
+
+    <!-- Volume -->
+    <div>
+      <div class="fs-ctrl-label">Volume</div>
+      <div class="fs-ctrl-row">
+        <input type="range" class="fs-range" id="fs-vol-slider" min="0" max="100" value="50"
+          oninput="fsUpdateVolume(this.value)">
+        <span class="fs-ctrl-val" id="fs-vol-val">50%</span>
+      </div>
+    </div>
+
+    <!-- Ruído -->
+    <div>
+      <div class="fs-ctrl-label">Ruído</div>
+      <div class="fs-noise-pills">
+        <div class="fs-pill" id="fs-pill-white" onclick="fsSetNoise('white',this)">Branco</div>
+        <div class="fs-pill active" id="fs-pill-pink" onclick="fsSetNoise('pink',this)">Rosa</div>
+        <div class="fs-pill" id="fs-pill-brown" onclick="fsSetNoise('brown',this)">Marrom</div>
+      </div>
+    </div>
+
+    <!-- Profundidade AM -->
+    <div>
+      <div class="fs-ctrl-label">Profundidade AM</div>
+      <div class="fs-ctrl-row">
+        <input type="range" class="fs-range" id="fs-am-slider" min="0" max="100" value="50"
+          oninput="fsUpdateAM(this.value)">
+        <span class="fs-ctrl-val" id="fs-am-val">50%</span>
+      </div>
+    </div>
+
+    <!-- Frequência -->
+    <div>
+      <div class="fs-ctrl-label">Frequência</div>
+      <div class="fs-ctrl-row">
+        <input type="range" class="fs-range" id="fs-freq-slider" min="1" max="40" value="16"
+          oninput="fsUpdateFreq(this.value)">
+        <span class="fs-ctrl-val" id="fs-freq-val">16 Hz</span>
+      </div>
+    </div>
+
+    <div class="fs-divider"></div>
+  </div>
+
   <button class="btn-stop-fs" onclick="stopSession()">ENCERRAR</button>
 </div>
 
@@ -832,9 +937,9 @@ function makeNoiseBuffer(ctx, type) {
 
 // ── AUDIO INIT ─────────────────────────────────────────
 function initAudio() {
-  // Declara intenção de playback contínuo — aumenta chance de sobreviver em background no iOS
+  // audioSession: playback apenas se modo background ativo
   if (navigator.audioSession) {
-    navigator.audioSession.type = 'ambient';
+    navigator.audioSession.type = backgroundMode ? 'playback' : 'ambient';
   }
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -877,6 +982,7 @@ function initAudio() {
   // AM modulation of noise
   const noiseGain = audioCtx.createGain();
   noiseGain.gain.value = 0;
+  fsNoiseGainNode = noiseGain; // referência para rebuild em tempo real
 
   amOsc = audioCtx.createOscillator();
   amOsc.frequency.value = freq;
@@ -1378,6 +1484,7 @@ function startSession() {
 
   initAudio();
   startFlicker();
+  syncFsControls();
 
   // Timer baseado em Date.now() — robusto a throttling em segundo plano
   const sessionStartTime = Date.now();
@@ -1399,6 +1506,115 @@ function startSession() {
       if (timeRemaining <= 0) stopSession();
     }
   }, 500); // 500ms para recalcular rapidamente ao voltar do background
+}
+
+// ── MODO BACKGROUND ──────────────────────────────────
+let backgroundMode = false;
+
+function onBgModeToggle(enabled) {
+  backgroundMode = enabled;
+  const thumb = document.getElementById('bg-thumb-dot');
+  const track = document.getElementById('bg-mode-thumb');
+  if (enabled) {
+    track.style.background = '#0d2a0d';
+    track.style.borderColor = 'rgba(57,255,106,0.5)';
+    thumb.style.background = 'var(--accent)';
+    thumb.style.left = '18px';
+  } else {
+    track.style.background = '#1a3a1a';
+    track.style.borderColor = '#2a5a2a';
+    thumb.style.background = '#2a5a2a';
+    thumb.style.left = '2px';
+  }
+}
+
+// ── CONTROLES IN-SESSION ──────────────────────────────
+function fsUpdateVolume(val) {
+  document.getElementById('fs-vol-val').textContent = val + '%';
+  document.getElementById('audio-slider').value = val;
+  document.getElementById('audio-val').textContent = val + '%';
+  if (masterGain) masterGain.gain.value = val / 100 * 0.5;
+}
+
+function fsUpdateAM(val) {
+  document.getElementById('fs-am-val').textContent = val + '%';
+  document.getElementById('am-slider').value = val;
+  document.getElementById('am-val').textContent = val + '%';
+  if (!audioCtx) return;
+  const depth = val / 100;
+  fsRebuildAM(depth);
+}
+
+let fsDepthGainNode = null;
+function fsRebuildAM(depth) {
+  if (!audioCtx || !noiseSource) return;
+  if (amOsc) { try { amOsc.stop(); } catch(e){} }
+  if (fsDepthGainNode) fsDepthGainNode.disconnect();
+  if (baseGainNode) { try { baseGainNode.stop(); } catch(e){} }
+  const noiseGain = fsNoiseGainNode;
+  if (!noiseGain) return;
+  amOsc = audioCtx.createOscillator();
+  amOsc.frequency.value = currentFreq;
+  amOsc.type = 'sine';
+  fsDepthGainNode = audioCtx.createGain();
+  fsDepthGainNode.gain.value = depth * 0.5;
+  baseGainNode = audioCtx.createConstantSource();
+  baseGainNode.offset.value = 1 - depth * 0.5;
+  amOsc.connect(fsDepthGainNode);
+  fsDepthGainNode.connect(noiseGain.gain);
+  baseGainNode.connect(noiseGain.gain);
+  amOsc.start();
+  baseGainNode.start();
+}
+
+let fsNoiseGainNode = null;
+
+function fsUpdateFreq(val) {
+  const hz = parseInt(val);
+  currentFreq = hz;
+  document.getElementById('fs-freq-val').textContent = hz + ' Hz';
+  document.getElementById('freq-slider').value = hz;
+  document.getElementById('freq-display').textContent = hz;
+  document.getElementById('freq-val').textContent = hz + ' Hz';
+  document.getElementById('freq-band').textContent = 'HERTZ · ' + getBand(hz);
+  document.getElementById('fs-freq-label').textContent = hz + ' HZ · ' + getBand(hz);
+  if (amOsc) amOsc.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.05);
+  if (binauralR) binauralR.frequency.setTargetAtTime(200 + hz, audioCtx.currentTime, 0.05);
+  if (currentFlicker) { stopFlicker(); startFlicker(); }
+}
+
+function fsSetNoise(type, el) {
+  currentNoise = type;
+  document.querySelectorAll('#noise-pills .pill').forEach(p => p.classList.remove('active'));
+  const mainPill = [...document.querySelectorAll('#noise-pills .pill')].find(p => {
+    const t = p.textContent.toLowerCase();
+    return (type === 'white' && t.includes('branc')) || (type === 'pink' && t.includes('rosa')) || (type === 'brown' && t.includes('marr'));
+  });
+  if (mainPill) mainPill.classList.add('active');
+  document.querySelectorAll('.fs-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  if (!audioCtx || !fsNoiseGainNode) return;
+  if (noiseSource) { try { noiseSource.stop(); } catch(e){} }
+  const buf = makeNoiseBuffer(audioCtx, type);
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = buf;
+  noiseSource.loop = true;
+  noiseSource.connect(fsNoiseGainNode);
+  noiseSource.start();
+}
+
+function syncFsControls() {
+  const vol = document.getElementById('audio-slider').value;
+  const am  = document.getElementById('am-slider').value;
+  document.getElementById('fs-vol-slider').value = vol;
+  document.getElementById('fs-vol-val').textContent = vol + '%';
+  document.getElementById('fs-am-slider').value = am;
+  document.getElementById('fs-am-val').textContent = am + '%';
+  document.getElementById('fs-freq-slider').value = currentFreq;
+  document.getElementById('fs-freq-val').textContent = currentFreq + ' Hz';
+  document.querySelectorAll('.fs-pill').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('fs-pill-' + currentNoise);
+  if (target) target.classList.add('active');
 }
 
 // ── BACKGROUND / FOREGROUND ──────────────────────────
