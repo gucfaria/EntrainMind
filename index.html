@@ -695,8 +695,8 @@
 
 
 
-  <!-- Modo background -->
-  <div style="margin-top:16px; padding:14px; border:1px solid #1a3a1a; border-radius:8px; background:#050d05;">
+  <!-- Modo background — só visível no iOS -->
+  <div id="bg-mode-section" style="display:none; margin-top:16px; padding:14px; border:1px solid #1a3a1a; border-radius:8px; background:#050d05;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
       <span style="font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px;">MODO BACKGROUND</span>
       <label style="position:relative; display:inline-block; width:36px; height:20px;">
@@ -717,7 +717,7 @@
     <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
   </div>
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.05.30g
+    v2026.05.30h
   </div>
 
   <div class="warning">
@@ -796,6 +796,10 @@
 </div>
 
 <script>
+// Detecção de plataforma
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 let sessionDuration = 20 * 60;
 let timeRemaining = sessionDuration;
 let isRunning = false;
@@ -1108,9 +1112,7 @@ function _startSessionOrig() {
   timeRemaining = sessionDuration;
   updateRing(1);
   // Wake Lock — mantém tela ativa
-  if ('wakeLock' in navigator) {
-    navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
-  }
+  acquireWakeLock();
 
   const band = getBand(currentFreq);
   const noiseLabel = {white:'BRANCO', pink:'ROSA', brown:'MARROM'}[currentNoise];
@@ -1480,9 +1482,7 @@ function startSession() {
   const ra = document.getElementById('ring-action'); if(ra) { ra.textContent = 'ENCERRAR'; ra.style.color='var(--warn)'; }
   const rh = document.getElementById('ring-dur-hint'); if(rh) rh.style.visibility='hidden';
 
-  if ('wakeLock' in navigator) {
-    navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
-  }
+  acquireWakeLock();
 
   const el = document.documentElement;
   if (el.requestFullscreen) el.requestFullscreen().catch(()=>{});
@@ -1635,6 +1635,31 @@ function syncFsControls() {
   if (target) target.classList.add('active');
 }
 
+// ── WAKE LOCK ────────────────────────────────────────
+async function acquireWakeLock(attempt) {
+  attempt = attempt || 1;
+  if (!('wakeLock' in navigator) || !isRunning) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    dbgLog('wakeLock OK (tentativa ' + attempt + ')');
+    // Listener para reaquirir se liberado pelo sistema
+    wakeLock.addEventListener('release', () => {
+      dbgLog('wakeLock liberado pelo sistema');
+      wakeLock = null;
+      if (isRunning) {
+        // Retry com backoff: 500ms, 1s, 2s
+        const delay = Math.min(500 * attempt, 2000);
+        setTimeout(() => acquireWakeLock(attempt + 1), delay);
+      }
+    });
+  } catch(e) {
+    dbgLog('wakeLock ERRO (t' + attempt + '): ' + e.message);
+    if (attempt < 3 && isRunning) {
+      setTimeout(() => acquireWakeLock(attempt + 1), 500 * attempt);
+    }
+  }
+}
+
 // ── BACKGROUND / FOREGROUND ──────────────────────────
 function dbgLog(msg) {
   const el = document.getElementById('debug-log');
@@ -1660,21 +1685,29 @@ function dbgUpdateState() {
 function applyAudioSession() {
   if (!navigator.audioSession || !audioCtx) return;
   if (audioCtx.state === 'running') {
-    navigator.audioSession.type = 'ambient';
-    dbgLog('audioSession → ambient (ctx: ' + audioCtx.state + ')');
+    navigator.audioSession.type = (isIOS && backgroundMode) ? 'playback' : 'ambient';
+    dbgLog('audioSession → ' + navigator.audioSession.type + ' (ctx: ' + audioCtx.state + ')');
     dbgUpdateState();
   } else {
     // Aguarda running via onstatechange
     audioCtx.addEventListener('statechange', function onStateChange() {
       if (audioCtx.state === 'running') {
         audioCtx.removeEventListener('statechange', onStateChange);
-        navigator.audioSession.type = 'ambient';
-        dbgLog('audioSession → ambient (ctx chegou a running)');
+        navigator.audioSession.type = (isIOS && backgroundMode) ? 'playback' : 'ambient';
+        dbgLog('audioSession → ' + navigator.audioSession.type + ' (ctx chegou a running)');
         dbgUpdateState();
       }
     });
   }
 }
+
+// Mostrar toggle de background apenas no iOS
+document.addEventListener('DOMContentLoaded', () => {
+  if (isIOS) {
+    const sec = document.getElementById('bg-mode-section');
+    if (sec) sec.style.display = 'block';
+  }
+});
 
 document.addEventListener('visibilitychange', () => {
   const state = document.visibilityState;
@@ -1685,12 +1718,10 @@ document.addEventListener('visibilitychange', () => {
       dbgUpdateState();
       // Reaplicar audioSession após resume — iOS pode ter resetado
       if (navigator.audioSession) {
-        navigator.audioSession.type = 'ambient';
-        dbgLog('audioSession reforçado → ambient');
+        navigator.audioSession.type = (isIOS && backgroundMode) ? 'playback' : 'ambient';
+        dbgLog('audioSession reforçado → ' + navigator.audioSession.type);
       }
-      if (!wakeLock && 'wakeLock' in navigator) {
-        navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
-      }
+      if (!wakeLock) acquireWakeLock();
     }).catch(e => dbgLog('resume() ERRO: ' + e.message));
   } else if (state === 'hidden') {
     dbgUpdateState();
