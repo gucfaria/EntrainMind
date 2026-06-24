@@ -441,6 +441,130 @@
     background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
     pointer-events: none; z-index: 50;
   }
+
+  /* ═══════ HOME — botões de acesso ═══════ */
+  .home-actions { width: 100%; display: flex; gap: 12px; }
+  .btn-home {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px;
+    padding: 15px 12px;
+    background: linear-gradient(160deg, #0c1a0c, #07120a);
+    border: 1px solid #1f4a1f; border-radius: 14px;
+    color: var(--fg); font-family: 'Share Tech Mono', monospace;
+    font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+    cursor: pointer; transition: all 0.18s;
+    box-shadow: inset 0 1px 0 rgba(57,255,106,0.06), 0 2px 10px rgba(0,0,0,0.4);
+  }
+  .btn-home:hover, .btn-home:active {
+    border-color: var(--accent); color: var(--accent);
+    box-shadow: inset 0 1px 0 rgba(57,255,106,0.12), 0 0 22px rgba(57,255,106,0.18);
+    transform: translateY(-1px);
+  }
+  .btn-home .bh-ico { font-size: 17px; line-height: 1; filter: drop-shadow(0 0 6px rgba(57,255,106,0.4)); }
+
+  /* ═══════ BOTTOM SHEETS ═══════ */
+  .sheet { position: fixed; inset: 0; z-index: 150; display: none; }
+  .sheet.active { display: block; }
+  .sheet-backdrop {
+    position: absolute; inset: 0; background: rgba(2,6,2,0.62);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    animation: sheetFade 0.25s ease;
+  }
+  @keyframes sheetFade { from { opacity: 0; } to { opacity: 1; } }
+  .sheet-box {
+    position: absolute; left: 0; right: 0; bottom: 0; margin: 0 auto;
+    width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto;
+    background: #060f06; border: 1px solid #1a3a1a; border-bottom: none;
+    border-radius: 20px 20px 0 0; padding: 8px 20px 36px;
+    box-shadow: 0 -12px 44px rgba(0,0,0,0.65);
+    transform: translateY(100%); transition: transform 0.34s cubic-bezier(.4,0,.2,1);
+  }
+  .sheet.active .sheet-box { transform: translateY(0); }
+  .sheet-handle { width: 42px; height: 4px; border-radius: 4px; background: #1f3f1f; margin: 6px auto 14px; }
+  .sheet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .sheet-title { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 3px; color: var(--accent); text-transform: uppercase; }
+  .sheet-close {
+    background: transparent; border: 1px solid #1a3a1a; border-radius: 50%;
+    width: 30px; height: 30px; color: var(--dim); font-size: 15px; cursor: pointer;
+    line-height: 1; display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .sheet-close:hover { border-color: var(--accent); color: var(--accent); }
+  #sheet-config .section-label, #sheet-config .slider-group,
+  #sheet-config #bg-mode-section, #sheet-config .nav-row { margin-top: 16px; }
+
+  /* ═══════ SESSÃO — pager horizontal ═══════ */
+  #fs-overlay { overflow: hidden; }
+  #fs-overlay.active { display: block; }
+  #fs-track {
+    position: absolute; left: 0; right: 0; top: 0; bottom: 104px;
+    display: flex; width: 300%;
+    transition: transform 0.4s cubic-bezier(.4,0,.2,1); will-change: transform;
+  }
+  .fs-panel {
+    flex: 0 0 33.3333%; height: 100%;
+    overflow-y: auto; overflow-x: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fs-panel-inner {
+    width: 100%; max-width: 340px; margin: auto; padding: 24px 24px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .fs-panel-title {
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 4px;
+    color: rgba(57,255,106,0.4); text-transform: uppercase; margin-bottom: 4px;
+  }
+  .fs-swipe-hint {
+    font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 2px;
+    color: rgba(57,255,106,0.28); margin-top: 22px; text-transform: uppercase;
+    animation: hintPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes hintPulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.7; } }
+  #panel-config .fs-panel-inner { justify-content: flex-start; }
+
+  /* Rodapé fixo */
+  #fs-footer {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 104px; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: linear-gradient(to top, var(--bg) 55%, rgba(4,10,4,0));
+  }
+  .fs-dots { display: flex; gap: 11px; }
+  .fs-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: rgba(57,255,106,0.18);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .fs-dot.active { background: var(--accent); box-shadow: 0 0 8px rgba(57,255,106,0.6); transform: scale(1.2); }
+
+  /* Suprime o flicker fora do painel 0 (mantém áudio entrainment) */
+  #flicker.flk-suppressed { opacity: 0 !important; }
+
+  /* ═══════ RESPIRAÇÃO GUIADA ═══════ */
+  .breath-stage { position: relative; width: 248px; height: 248px; display: flex; align-items: center; justify-content: center; }
+  .breath-square { position: absolute; left: 24px; top: 24px; right: 24px; bottom: 24px; border: 1px solid rgba(57,255,106,0.18); border-radius: 12px; }
+  .breath-ring {
+    position: absolute; width: 72px; height: 72px; border-radius: 50%;
+    border: 2px solid rgba(57,255,106,0.55);
+    box-shadow: 0 0 26px rgba(57,255,106,0.25), inset 0 0 20px rgba(57,255,106,0.12);
+    transform: scale(0.6); will-change: transform; display: none;
+  }
+  .breath-dot {
+    position: absolute; left: 24px; top: 24px; width: 22px; height: 22px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #e2ffee, var(--accent) 60%, rgba(57,255,106,0.25));
+    box-shadow: 0 0 18px 5px rgba(57,255,106,0.55); transform: translate(-50%,-50%);
+  }
+  .breath-phase {
+    position: absolute; font-family: 'Share Tech Mono', monospace; font-size: 13px;
+    letter-spacing: 3px; color: rgba(57,255,106,0.7); text-transform: uppercase; pointer-events: none;
+    text-shadow: 0 0 12px rgba(57,255,106,0.4);
+  }
+  .breath-stage.mode-pulse .breath-square,
+  .breath-stage.mode-pulse .breath-dot { display: none; }
+  .breath-stage.mode-pulse .breath-ring { display: block; }
+  .breath-patterns { margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+  .breath-help { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 1px; color: rgba(57,255,106,0.3); margin-top: 2px; }
+
+  /* ═══════ Polimento de botões existentes ═══════ */
+  .preset-btn { background: linear-gradient(160deg, #0e1c0e, #0a160a); border-radius: 10px; }
+  .preset-btn:active { transform: scale(0.98); }
+  .btn-nav { border-radius: 10px; }
 </style>
 </head>
 <body>
@@ -589,12 +713,19 @@
   <!-- btn-main oculto — círculo do timer é o botão de iniciar -->
   <button id="btn-main" onclick="toggleSession()" style="display:none">INICIAR</button>
 
-  <div class="controls">
+  <!-- Botões de acesso rápido -->
+  <div class="home-actions">
+    <button class="btn-home" onclick="openSheet('config')"><span class="bh-ico">⚙</span><span class="bh-txt">Configurações</span></button>
+    <button class="btn-home" onclick="openSheet('presets')"><span class="bh-ico">☰</span><span class="bh-txt">Presets</span></button>
+  </div>
 
-
-  <!-- PRESETS -->
-  <div class="section-label">Presets de uso</div>
-  <div class="presets-section">
+  <!-- SHEET: PRESETS -->
+  <div id="sheet-presets" class="sheet">
+    <div class="sheet-backdrop" onclick="closeSheet('presets')"></div>
+    <div class="sheet-box">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><span class="sheet-title">Presets de uso</span><button class="sheet-close" onclick="closeSheet('presets')">✕</button></div>
+      <div class="presets-section">
     <div class="preset-grid">
       <button class="preset-btn" onclick="applyPreset('tdah')">
         <span class="preset-name">🎯 TDAH / FOCO</span>
@@ -633,7 +764,16 @@
         <span class="preset-desc" id="custom2-desc">Toque: aplicar · Segure: salvar novo</span>
       </button>
     </div>
-  </div>
+      </div><!-- /presets-section -->
+    </div><!-- /sheet-box -->
+  </div><!-- /sheet-presets -->
+
+  <!-- SHEET: CONFIGURAÇÕES -->
+  <div id="sheet-config" class="sheet">
+    <div class="sheet-backdrop" onclick="closeSheet('config')"></div>
+    <div class="sheet-box">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><span class="sheet-title">Configurações</span><button class="sheet-close" onclick="closeSheet('config')">✕</button></div>
 
     <div class="section-label">Áudio</div>
     <div id="dur-pills" style="display:none"></div>
@@ -691,12 +831,8 @@
 
     </div>
 
-  </div>
-
-
-
-  <!-- Modo background — só visível no iOS -->
-  <div id="bg-mode-section" style="display:none; margin-top:16px; padding:14px; border:1px solid #1a3a1a; border-radius:8px; background:#050d05;">
+    <!-- Modo background — só visível no iOS -->
+    <div id="bg-mode-section" style="display:none; margin-top:16px; padding:14px; border:1px solid #1a3a1a; border-radius:8px; background:#050d05;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
       <span style="font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px;">MODO BACKGROUND</span>
       <label style="position:relative; display:inline-block; width:36px; height:20px;">
@@ -712,10 +848,14 @@
     </div>
   </div>
 
-  <div class="nav-row">
-    <a href="manual.html" class="btn-nav">📖 MANUAL</a>
-    <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
-  </div>
+    <div class="nav-row">
+      <a href="manual.html" class="btn-nav">📖 MANUAL</a>
+      <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
+    </div>
+
+    </div><!-- /sheet-box -->
+  </div><!-- /sheet-config -->
+
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
     v2026.05.30h
   </div>
@@ -729,14 +869,26 @@
 </div>
 
 <div id="fs-overlay">
-  <div class="fs-freq" id="fs-freq-label">40 HZ · GAMMA</div>
-  <div class="fs-timer" id="fs-timer">05:00</div>
-  <div class="fs-mode" id="fs-mode-label">AM · BRANCO</div>
-  <div id="silent-warning" style="display:none; font-family:'Share Tech Mono',monospace; font-size:10px; color:rgba(255,107,53,0.8); letter-spacing:2px; text-align:center; padding:0 24px; margin-top:4px;">
-    ⚠ iOS: DESATIVE O MODO SILENCIOSO PARA ÁUDIO
-  </div>
+ <div id="fs-track">
 
-  <div id="fs-controls">
+  <!-- PAINEL 0 — Flicker / timer ambiente -->
+  <section class="fs-panel" id="panel-flicker">
+   <div class="fs-panel-inner">
+    <div class="fs-freq" id="fs-freq-label">40 HZ · GAMMA</div>
+    <div class="fs-timer" id="fs-timer">05:00</div>
+    <div class="fs-mode" id="fs-mode-label">AM · BRANCO</div>
+    <div id="silent-warning" style="display:none; font-family:'Share Tech Mono',monospace; font-size:10px; color:rgba(255,107,53,0.8); letter-spacing:2px; text-align:center; padding:0 24px; margin-top:4px;">
+      ⚠ iOS: DESATIVE O MODO SILENCIOSO PARA ÁUDIO
+    </div>
+    <div class="fs-swipe-hint">deslize ← para ajustes · respiração</div>
+   </div>
+  </section>
+
+  <!-- PAINEL 1 — Configurações in-session -->
+  <section class="fs-panel" id="panel-config">
+   <div class="fs-panel-inner">
+    <div class="fs-panel-title">Ajustes da sessão</div>
+    <div id="fs-controls">
     <div class="fs-divider"></div>
 
     <!-- Volume -->
@@ -791,8 +943,39 @@
     <div id="debug-log" style="color:rgba(57,255,106,0.35); line-height:1.6; max-height:80px;
       overflow-y:auto; border-top:1px solid rgba(57,255,106,0.08); padding-top:6px;"></div>
   </div>
+   </div>
+  </section>
 
-  <button class="btn-stop-fs" onclick="stopSession()">ENCERRAR</button>
+  <!-- PAINEL 2 — Respiração guiada -->
+  <section class="fs-panel" id="panel-breath">
+   <div class="fs-panel-inner">
+    <div class="fs-panel-title">Respiração guiada</div>
+    <div class="breath-stage" id="breath-stage">
+      <div class="breath-square" id="breath-square"></div>
+      <div class="breath-ring" id="breath-ring"></div>
+      <div class="breath-dot" id="breath-dot"></div>
+      <div class="breath-phase" id="breath-phase">respire</div>
+    </div>
+    <div class="fs-noise-pills breath-patterns">
+      <div class="fs-pill active" id="bp-box" onclick="setBreathPattern('box',this)">Caixa 4·4·4·4</div>
+      <div class="fs-pill" id="bp-478" onclick="setBreathPattern('478',this)">4·7·8</div>
+      <div class="fs-pill" id="bp-coh" onclick="setBreathPattern('coherence',this)">Coerência 5·5</div>
+    </div>
+    <div class="breath-help" id="breath-help">Acompanhe o ponto com a respiração</div>
+   </div>
+  </section>
+
+ </div><!-- /fs-track -->
+
+ <!-- Rodapé fixo: navegação + encerrar -->
+ <div id="fs-footer">
+   <div class="fs-dots">
+     <span class="fs-dot active" id="fs-dot-0" onclick="goPanel(0)"></span>
+     <span class="fs-dot" id="fs-dot-1" onclick="goPanel(1)"></span>
+     <span class="fs-dot" id="fs-dot-2" onclick="goPanel(2)"></span>
+   </div>
+   <button class="btn-stop-fs" onclick="stopSession()">ENCERRAR</button>
+ </div>
 </div>
 
 <script>
@@ -1148,6 +1331,7 @@ function stopSession() {
   isRunning = false;
   clearInterval(timerInterval);
   stopFlicker();
+  if (typeof stopBreath === 'function') stopBreath();
   stopAudio();
   // Libera Wake Lock
   if (wakeLock) { wakeLock.release(); wakeLock = null; }
@@ -1171,8 +1355,9 @@ function stopSession() {
   else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
 
   // Abrir feedback após pequeno delay (tela sair do fullscreen)
+  // Só pede feedback se a sessão durou mais de 1 minuto real (60s).
   saveState();
-  if (completedDuration >= 1) {
+  if (elapsedSeconds >= 60) {
     setTimeout(() => openFeedback({
       freq: currentFreq,
       noise: noiseLabel,
@@ -1500,6 +1685,7 @@ function startSession() {
   });
   startFlicker();
   syncFsControls();
+  if (typeof resetPager === 'function') resetPager();
 
   // Timer baseado em Date.now() — robusto a throttling em segundo plano
   const sessionStartTime = Date.now();
@@ -2062,6 +2248,214 @@ function openHistory() {
 function closeHistory() {
   document.getElementById('history-modal').classList.remove('active');
 }
+
+// ═══════════════════════════════════════════════════════════
+//  BOTTOM SHEETS (home)
+// ═══════════════════════════════════════════════════════════
+function openSheet(which) {
+  const el = document.getElementById('sheet-' + which);
+  if (el) el.classList.add('active');
+}
+function closeSheet(which) {
+  const el = document.getElementById('sheet-' + which);
+  if (el) el.classList.remove('active');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SESSÃO — PAGER HORIZONTAL (flicker / config / respiração)
+// ═══════════════════════════════════════════════════════════
+const PANEL_COUNT = 3;
+let currentPanel = 0;
+
+function applyPanelTransform() {
+  const track = document.getElementById('fs-track');
+  if (track) track.style.transform = 'translateX(' + (-currentPanel * 33.3333) + '%)';
+  for (let i = 0; i < PANEL_COUNT; i++) {
+    const dot = document.getElementById('fs-dot-' + i);
+    if (dot) dot.classList.toggle('active', i === currentPanel);
+  }
+  // Flicker visual só no painel 0 (o áudio entrainment continua sempre)
+  const flk = document.getElementById('flicker');
+  if (flk) flk.classList.toggle('flk-suppressed', currentPanel !== 0);
+  // Respiração anima apenas quando seu painel está visível
+  if (currentPanel === 2) startBreath(); else stopBreath();
+}
+
+function goPanel(i) {
+  currentPanel = Math.max(0, Math.min(PANEL_COUNT - 1, i));
+  applyPanelTransform();
+}
+
+function resetPager() {
+  currentPanel = 0;
+  applyPanelTransform();
+}
+
+// Swipe horizontal — distingue de scroll vertical e de arrastar sliders
+(function initPagerSwipe() {
+  const overlay = document.getElementById('fs-overlay');
+  if (!overlay) return;
+  let startX = 0, startY = 0, tracking = false, decided = false, horizontal = false;
+  const THRESHOLD = 45; // px para trocar de painel
+
+  function isInteractive(t) {
+    return t.closest('input[type=range], .fs-pill, .pill, button, a');
+  }
+
+  function onStart(e) {
+    if (e.target && isInteractive(e.target)) { tracking = false; return; }
+    const t = e.touches ? e.touches[0] : e;
+    startX = t.clientX; startY = t.clientY;
+    tracking = true; decided = false; horizontal = false;
+  }
+  function onMove(e) {
+    if (!tracking) return;
+    const t = e.touches ? e.touches[0] : e;
+    const dx = t.clientX - startX, dy = t.clientY - startY;
+    if (!decided) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      decided = true;
+      horizontal = Math.abs(dx) > Math.abs(dy);
+    }
+    if (horizontal && e.cancelable) e.preventDefault(); // evita scroll vertical durante swipe lateral
+  }
+  function onEnd(e) {
+    if (!tracking || !horizontal) { tracking = false; return; }
+    const t = (e.changedTouches ? e.changedTouches[0] : e);
+    const dx = t.clientX - startX;
+    if (dx <= -THRESHOLD) goPanel(currentPanel + 1);
+    else if (dx >= THRESHOLD) goPanel(currentPanel - 1);
+    tracking = false;
+  }
+
+  overlay.addEventListener('touchstart', onStart, { passive: true });
+  overlay.addEventListener('touchmove', onMove, { passive: false });
+  overlay.addEventListener('touchend', onEnd, { passive: true });
+  // Suporte a mouse (desktop / DevTools)
+  overlay.addEventListener('mousedown', onStart);
+  window.addEventListener('mousemove', (e) => { if (tracking) onMove(e); });
+  window.addEventListener('mouseup', (e) => { if (tracking) onEnd(e); });
+})();
+
+// ═══════════════════════════════════════════════════════════
+//  RESPIRAÇÃO GUIADA
+// ═══════════════════════════════════════════════════════════
+const BREATH_PATTERNS = {
+  box: {
+    type: 'trace',
+    phases: [
+      { name: 'Inspire', t: 4 },
+      { name: 'Segure',  t: 4 },
+      { name: 'Expire',  t: 4 },
+      { name: 'Segure',  t: 4 }
+    ]
+  },
+  '478': {
+    type: 'pulse',
+    phases: [
+      { name: 'Inspire', t: 4, from: 0, to: 1 },
+      { name: 'Segure',  t: 7, from: 1, to: 1 },
+      { name: 'Expire',  t: 8, from: 1, to: 0 }
+    ]
+  },
+  coherence: {
+    type: 'pulse',
+    phases: [
+      { name: 'Inspire', t: 5, from: 0, to: 1 },
+      { name: 'Expire',  t: 5, from: 1, to: 0 }
+    ]
+  }
+};
+
+let breathPattern = 'box';
+let breathRAF = null;
+let breathCycleStart = null;
+
+// Geometria do quadrado (px, dentro de .breath-stage 248×248 com inset 24)
+const BREATH_SQ = { min: 24, max: 224 };
+const BREATH_CORNERS = {
+  BL: { x: BREATH_SQ.min, y: BREATH_SQ.max },
+  TL: { x: BREATH_SQ.min, y: BREATH_SQ.min },
+  TR: { x: BREATH_SQ.max, y: BREATH_SQ.min },
+  BR: { x: BREATH_SQ.max, y: BREATH_SQ.max }
+};
+// Lados percorridos por fase (box): inspira sobe, segura →, expira desce, segura ←
+const BREATH_SIDES = [
+  ['BL', 'TL'],
+  ['TL', 'TR'],
+  ['TR', 'BR'],
+  ['BR', 'BL']
+];
+
+function setBreathPattern(p, el) {
+  breathPattern = p;
+  document.querySelectorAll('.breath-patterns .fs-pill').forEach(x => x.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const stage = document.getElementById('breath-stage');
+  if (stage) {
+    const isPulse = BREATH_PATTERNS[p].type === 'pulse';
+    stage.classList.toggle('mode-pulse', isPulse);
+    stage.classList.toggle('mode-trace', !isPulse);
+  }
+  breathCycleStart = null; // reinicia o ciclo no novo padrão
+}
+
+function startBreath() {
+  if (breathRAF) return;
+  const stage = document.getElementById('breath-stage');
+  if (stage) {
+    const isPulse = BREATH_PATTERNS[breathPattern].type === 'pulse';
+    stage.classList.toggle('mode-pulse', isPulse);
+    stage.classList.toggle('mode-trace', !isPulse);
+  }
+  breathCycleStart = null;
+  breathRAF = requestAnimationFrame(breathFrame);
+}
+
+function stopBreath() {
+  if (breathRAF) { cancelAnimationFrame(breathRAF); breathRAF = null; }
+}
+
+function breathFrame(ts) {
+  const pat = BREATH_PATTERNS[breathPattern];
+  const total = pat.phases.reduce((s, ph) => s + ph.t, 0);
+  if (breathCycleStart === null) breathCycleStart = ts;
+  let elapsed = ((ts - breathCycleStart) / 1000) % total;
+
+  // Localiza fase atual e progresso dentro dela
+  let phaseIdx = 0, acc = 0;
+  for (let i = 0; i < pat.phases.length; i++) {
+    if (elapsed < acc + pat.phases[i].t) { phaseIdx = i; break; }
+    acc += pat.phases[i].t;
+  }
+  const phase = pat.phases[phaseIdx];
+  const p = Math.min(1, (elapsed - acc) / phase.t); // 0..1 na fase
+
+  const phaseEl = document.getElementById('breath-phase');
+  if (phaseEl && phaseEl.textContent !== phase.name) phaseEl.textContent = phase.name;
+
+  if (pat.type === 'trace') {
+    const side = BREATH_SIDES[phaseIdx % 4];
+    const a = BREATH_CORNERS[side[0]], b = BREATH_CORNERS[side[1]];
+    const x = a.x + (b.x - a.x) * p;
+    const y = a.y + (b.y - a.y) * p;
+    const dot = document.getElementById('breath-dot');
+    if (dot) { dot.style.left = x + 'px'; dot.style.top = y + 'px'; }
+  } else {
+    // pulse — interpola escala from→to
+    const v = phase.from + (phase.to - phase.from) * easeInOut(p);
+    const scale = 0.6 + v * 1.7; // 0.6 → 2.3
+    const ring = document.getElementById('breath-ring');
+    if (ring) ring.style.transform = 'scale(' + scale.toFixed(3) + ')';
+  }
+
+  breathRAF = requestAnimationFrame(breathFrame);
+}
+
+function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+// Estado inicial do estágio de respiração
+setBreathPattern('box', document.getElementById('bp-box'));
 </script>
 </body>
 </html>
