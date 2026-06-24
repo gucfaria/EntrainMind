@@ -1,4 +1,4 @@
-const CACHE = 'entrainmind-v10';
+const CACHE = 'entrainmind-v11';
 const ASSETS = [
   './index.html',
   './manual.html',
