@@ -496,11 +496,11 @@
   #fs-overlay.active { display: block; }
   #fs-track {
     position: absolute; left: 0; right: 0; top: 0; bottom: 104px;
-    display: flex; width: 300%;
+    display: flex; width: 400%;
     transition: transform 0.4s cubic-bezier(.4,0,.2,1); will-change: transform;
   }
   .fs-panel {
-    flex: 0 0 33.3333%; height: 100%;
+    flex: 0 0 25%; height: 100%;
     overflow-y: auto; overflow-x: hidden;
     display: flex; align-items: center; justify-content: center;
   }
@@ -565,6 +565,33 @@
   .preset-btn { background: linear-gradient(160deg, #0e1c0e, #0a160a); border-radius: 10px; }
   .preset-btn:active { transform: scale(0.98); }
   .btn-nav { border-radius: 10px; }
+
+  /* ═══════ SESSÃO — relógio analógico + Time Timer ═══════ */
+  .fs-clock { width: 96px; height: 96px; margin-top: 4px; }
+  .clk-face { fill: rgba(57,255,106,0.03); stroke: rgba(57,255,106,0.28); stroke-width: 1.4; }
+  .clk-tick { stroke: rgba(57,255,106,0.4); stroke-width: 1.4; stroke-linecap: round; }
+  .clk-hand { stroke: var(--accent); stroke-linecap: round; transform-box: view-box; }
+  .clk-hour { stroke-width: 3; opacity: 0.85; }
+  .clk-min { stroke-width: 2.2; opacity: 0.85; }
+  .clk-sec { stroke-width: 1; stroke: #d8ffe6; }
+  .clk-cap { fill: var(--accent); }
+  .fs-clock .clk-hand { filter: drop-shadow(0 0 3px rgba(57,255,106,0.5)); }
+
+  .fs-timetimer-wrap { position: relative; width: 232px; height: 232px; display: flex; align-items: center; justify-content: center; }
+  .fs-timetimer { width: 232px; height: 232px; transform: rotate(0deg); filter: drop-shadow(0 0 10px rgba(57,255,106,0.25)); }
+  .tt-track { fill: rgba(57,255,106,0.03); stroke: rgba(57,255,106,0.22); stroke-width: 2; }
+  .tt-tick { stroke: rgba(57,255,106,0.35); stroke-width: 1.4; stroke-linecap: round; }
+  .tt-wedge {
+    fill: rgba(57,255,106,0.7);
+    filter: drop-shadow(0 0 8px rgba(57,255,106,0.6));
+    transition: none;
+  }
+  .tt-hub { fill: #d8ffe6; }
+  .fs-timetimer-wrap .fs-timer {
+    position: absolute; font-size: 26px; letter-spacing: 2px;
+    color: #eafff0; text-shadow: 0 0 12px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.9);
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
@@ -875,12 +902,33 @@
   <section class="fs-panel" id="panel-flicker">
    <div class="fs-panel-inner">
     <div class="fs-freq" id="fs-freq-label">40 HZ · GAMMA</div>
-    <div class="fs-timer" id="fs-timer">05:00</div>
+
+    <!-- Relógio analógico -->
+    <svg class="fs-clock" viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="clk-face" cx="50" cy="50" r="46"/>
+      <g id="clk-ticks"></g>
+      <line class="clk-hand clk-hour" id="clk-hour" x1="50" y1="50" x2="50" y2="30"/>
+      <line class="clk-hand clk-min" id="clk-min" x1="50" y1="50" x2="50" y2="20"/>
+      <line class="clk-hand clk-sec" id="clk-sec" x1="50" y1="50" x2="50" y2="16"/>
+      <circle class="clk-cap" cx="50" cy="50" r="2.4"/>
+    </svg>
+
+    <!-- Time Timer analógico (cunha que se esgota) -->
+    <div class="fs-timetimer-wrap">
+      <svg class="fs-timetimer" viewBox="0 0 120 120">
+        <circle class="tt-track" cx="60" cy="60" r="54"/>
+        <path class="tt-wedge" id="tt-wedge" d=""/>
+        <g id="tt-ticks"></g>
+        <circle class="tt-hub" cx="60" cy="60" r="4"/>
+      </svg>
+      <div class="fs-timer" id="fs-timer">20:00</div>
+    </div>
+
     <div class="fs-mode" id="fs-mode-label">AM · BRANCO</div>
     <div id="silent-warning" style="display:none; font-family:'Share Tech Mono',monospace; font-size:10px; color:rgba(255,107,53,0.8); letter-spacing:2px; text-align:center; padding:0 24px; margin-top:4px;">
       ⚠ iOS: DESATIVE O MODO SILENCIOSO PARA ÁUDIO
     </div>
-    <div class="fs-swipe-hint">deslize ← para ajustes · respiração</div>
+    <div class="fs-swipe-hint">deslize ← ajustes · respiração · imersão</div>
    </div>
   </section>
 
@@ -965,6 +1013,20 @@
    </div>
   </section>
 
+  <!-- PAINEL 3 — Flicker + meditação guiada (sobrepostos) -->
+  <section class="fs-panel" id="panel-flickbreath">
+   <div class="fs-panel-inner">
+    <div class="fs-panel-title">Flicker + respiração</div>
+    <div class="breath-stage" id="breath-stage-2">
+      <div class="breath-square"></div>
+      <div class="breath-ring"></div>
+      <div class="breath-dot"></div>
+      <div class="breath-phase">respire</div>
+    </div>
+    <div class="breath-help">Respire acompanhando o ponto enquanto o flicker atua</div>
+   </div>
+  </section>
+
  </div><!-- /fs-track -->
 
  <!-- Rodapé fixo: navegação + encerrar -->
@@ -973,6 +1035,7 @@
      <span class="fs-dot active" id="fs-dot-0" onclick="goPanel(0)"></span>
      <span class="fs-dot" id="fs-dot-1" onclick="goPanel(1)"></span>
      <span class="fs-dot" id="fs-dot-2" onclick="goPanel(2)"></span>
+     <span class="fs-dot" id="fs-dot-3" onclick="goPanel(3)"></span>
    </div>
    <button class="btn-stop-fs" onclick="stopSession()">ENCERRAR</button>
  </div>
@@ -1099,7 +1162,63 @@ function updateTimerDisplay(s) {
 }
 function updateRing(fraction) {
   document.getElementById('ring-prog').style.strokeDashoffset = 427.26 * (1 - fraction);
+  updateTimeTimer(fraction);
 }
+
+// ── TIME TIMER analógico (cunha) + relógio ──────────────
+function ttWedgePath(f) {
+  const cx = 60, cy = 60, r = 54;
+  f = Math.max(0, Math.min(1, f));
+  if (f <= 0.0001) return '';
+  if (f >= 0.9999) return `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} Z`;
+  const sweep = f * 360;
+  const rad = sweep * Math.PI / 180;
+  const x = cx + r * Math.sin(rad);
+  const y = cy - r * Math.cos(rad);
+  const large = sweep > 180 ? 1 : 0;
+  return `M ${cx} ${cy} L ${cx} ${cy - r} A ${r} ${r} 0 ${large} 1 ${x.toFixed(3)} ${y.toFixed(3)} Z`;
+}
+function updateTimeTimer(f) {
+  const w = document.getElementById('tt-wedge');
+  if (w) w.setAttribute('d', ttWedgePath(f));
+}
+function setHand(id, deg) {
+  const el = document.getElementById(id);
+  if (el) el.setAttribute('transform', 'rotate(' + deg + ' 50 50)');
+}
+function updateClock() {
+  const now = new Date();
+  const s = now.getSeconds(), m = now.getMinutes(), h = now.getHours() % 12;
+  setHand('clk-sec', s * 6);
+  setHand('clk-min', m * 6 + s * 0.1);
+  setHand('clk-hour', h * 30 + m * 0.5);
+}
+(function buildDialTicks() {
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const cg = document.getElementById('clk-ticks');
+  if (cg) for (let i = 0; i < 12; i++) {
+    const a = i * 30 * Math.PI / 180, big = i % 3 === 0;
+    const r1 = big ? 38 : 41, r2 = 44;
+    const ln = document.createElementNS(SVGNS, 'line');
+    ln.setAttribute('x1', (50 + r1 * Math.sin(a)).toFixed(2));
+    ln.setAttribute('y1', (50 - r1 * Math.cos(a)).toFixed(2));
+    ln.setAttribute('x2', (50 + r2 * Math.sin(a)).toFixed(2));
+    ln.setAttribute('y2', (50 - r2 * Math.cos(a)).toFixed(2));
+    ln.setAttribute('class', 'clk-tick');
+    cg.appendChild(ln);
+  }
+  const tg = document.getElementById('tt-ticks');
+  if (tg) for (let i = 0; i < 12; i++) {
+    const a = i * 30 * Math.PI / 180;
+    const ln = document.createElementNS(SVGNS, 'line');
+    ln.setAttribute('x1', (60 + 50 * Math.sin(a)).toFixed(2));
+    ln.setAttribute('y1', (60 - 50 * Math.cos(a)).toFixed(2));
+    ln.setAttribute('x2', (60 + 54 * Math.sin(a)).toFixed(2));
+    ln.setAttribute('y2', (60 - 54 * Math.cos(a)).toFixed(2));
+    ln.setAttribute('class', 'tt-tick');
+    tg.appendChild(ln);
+  }
+})();
 
 // ── NOISE GENERATORS ───────────────────────────────────
 function makeNoiseBuffer(ctx, type) {
@@ -1686,6 +1805,7 @@ function startSession() {
   startFlicker();
   syncFsControls();
   if (typeof resetPager === 'function') resetPager();
+  updateClock();
 
   // Timer baseado em Date.now() — robusto a throttling em segundo plano
   const sessionStartTime = Date.now();
@@ -1694,6 +1814,7 @@ function startSession() {
   timerInterval = setInterval(() => {
     const wallSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
     elapsedSeconds = wallSeconds;
+    updateClock();
 
     if (infiniteMode) {
       updateTimerDisplay(elapsedSeconds);
@@ -2264,21 +2385,22 @@ function closeSheet(which) {
 // ═══════════════════════════════════════════════════════════
 //  SESSÃO — PAGER HORIZONTAL (flicker / config / respiração)
 // ═══════════════════════════════════════════════════════════
-const PANEL_COUNT = 3;
+const PANEL_COUNT = 4;
 let currentPanel = 0;
 
 function applyPanelTransform() {
   const track = document.getElementById('fs-track');
-  if (track) track.style.transform = 'translateX(' + (-currentPanel * 33.3333) + '%)';
+  if (track) track.style.transform = 'translateX(' + (-currentPanel * 25) + '%)';
   for (let i = 0; i < PANEL_COUNT; i++) {
     const dot = document.getElementById('fs-dot-' + i);
     if (dot) dot.classList.toggle('active', i === currentPanel);
   }
-  // Flicker visual só no painel 0 (o áudio entrainment continua sempre)
+  // Flicker visual nos painéis 0 e 3 (imersão); o áudio entrainment continua sempre
   const flk = document.getElementById('flicker');
-  if (flk) flk.classList.toggle('flk-suppressed', currentPanel !== 0);
-  // Respiração anima apenas quando seu painel está visível
-  if (currentPanel === 2) startBreath(); else stopBreath();
+  const flickerPanel = (currentPanel === 0 || currentPanel === 3);
+  if (flk) flk.classList.toggle('flk-suppressed', !flickerPanel);
+  // Respiração anima nos painéis 2 (guiada) e 3 (flicker + respiração)
+  if (currentPanel === 2 || currentPanel === 3) startBreath(); else stopBreath();
 }
 
 function goPanel(i) {
@@ -2387,27 +2509,25 @@ const BREATH_SIDES = [
   ['BR', 'BL']
 ];
 
+function applyBreathMode() {
+  const isPulse = BREATH_PATTERNS[breathPattern].type === 'pulse';
+  document.querySelectorAll('.breath-stage').forEach(stage => {
+    stage.classList.toggle('mode-pulse', isPulse);
+    stage.classList.toggle('mode-trace', !isPulse);
+  });
+}
+
 function setBreathPattern(p, el) {
   breathPattern = p;
   document.querySelectorAll('.breath-patterns .fs-pill').forEach(x => x.classList.remove('active'));
   if (el) el.classList.add('active');
-  const stage = document.getElementById('breath-stage');
-  if (stage) {
-    const isPulse = BREATH_PATTERNS[p].type === 'pulse';
-    stage.classList.toggle('mode-pulse', isPulse);
-    stage.classList.toggle('mode-trace', !isPulse);
-  }
+  applyBreathMode();
   breathCycleStart = null; // reinicia o ciclo no novo padrão
 }
 
 function startBreath() {
   if (breathRAF) return;
-  const stage = document.getElementById('breath-stage');
-  if (stage) {
-    const isPulse = BREATH_PATTERNS[breathPattern].type === 'pulse';
-    stage.classList.toggle('mode-pulse', isPulse);
-    stage.classList.toggle('mode-trace', !isPulse);
-  }
+  applyBreathMode();
   breathCycleStart = null;
   breathRAF = requestAnimationFrame(breathFrame);
 }
@@ -2431,22 +2551,21 @@ function breathFrame(ts) {
   const phase = pat.phases[phaseIdx];
   const p = Math.min(1, (elapsed - acc) / phase.t); // 0..1 na fase
 
-  const phaseEl = document.getElementById('breath-phase');
-  if (phaseEl && phaseEl.textContent !== phase.name) phaseEl.textContent = phase.name;
+  document.querySelectorAll('.breath-phase').forEach(pe => {
+    if (pe.textContent !== phase.name) pe.textContent = phase.name;
+  });
 
   if (pat.type === 'trace') {
     const side = BREATH_SIDES[phaseIdx % 4];
     const a = BREATH_CORNERS[side[0]], b = BREATH_CORNERS[side[1]];
     const x = a.x + (b.x - a.x) * p;
     const y = a.y + (b.y - a.y) * p;
-    const dot = document.getElementById('breath-dot');
-    if (dot) { dot.style.left = x + 'px'; dot.style.top = y + 'px'; }
+    document.querySelectorAll('.breath-dot').forEach(dot => { dot.style.left = x + 'px'; dot.style.top = y + 'px'; });
   } else {
     // pulse — interpola escala from→to
     const v = phase.from + (phase.to - phase.from) * easeInOut(p);
     const scale = 0.6 + v * 1.7; // 0.6 → 2.3
-    const ring = document.getElementById('breath-ring');
-    if (ring) ring.style.transform = 'scale(' + scale.toFixed(3) + ')';
+    document.querySelectorAll('.breath-ring').forEach(ring => { ring.style.transform = 'scale(' + scale.toFixed(3) + ')'; });
   }
 
   breathRAF = requestAnimationFrame(breathFrame);
