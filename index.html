@@ -555,18 +555,21 @@
   }
   #fs-breath-info {
     position: absolute; top: 50%; left: 50%; transform: translateX(-50%);
-    margin-top: 28px;
-    font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 2px;
-    color: rgba(57,255,106,0.55); pointer-events: none; white-space: nowrap;
-    text-shadow: 0 0 8px rgba(4,10,4,0.9);
+    margin-top: 34px;
+    font-family: 'Share Tech Mono', monospace; font-size: 16px; font-weight: 700; letter-spacing: 3px;
+    color: rgba(102,255,140,0.92); pointer-events: none; white-space: nowrap;
+    text-shadow: 0 0 10px rgba(57,255,106,0.5), 0 2px 6px rgba(4,10,4,0.95);
   }
   #fs-main .fs-mode { position: absolute; top: 28px; left: 0; right: 0; text-align: center; }
   #fs-stage { position: relative; flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; }
-  /* Onda fusiforme (como no logo) de um extremo ao outro, atravessando o círculo */
+  /* Onda fusiforme (como no logo) — aparece só durante o toque no slider de
+     frequência (evita ser um distrator constante num app de concentração) */
   #fs-wave {
     position: absolute; left: 50%; top: calc(50% - 30px); transform: translate(-50%,-50%);
     width: 100vw; height: 120px; pointer-events: none;
+    opacity: 0; transition: opacity 0.45s ease;
   }
+  #fs-wave.visible { opacity: 1; }
   /* Dial: círculo do timer + moldura justa ao redor (como o Time Timer físico) */
   #fs-dial {
     position: relative; width: min(248px, 60vw); height: min(248px, 60vw);
@@ -663,7 +666,8 @@
   .tt-tick { stroke: rgba(57,255,106,0.55); stroke-width: 1.6; stroke-linecap: round; }
   .tt-hub { fill: #d8ffe6; filter: drop-shadow(0 0 4px rgba(57,255,106,0.8)); }
   #fs-dial .fs-timer {
-    position: absolute; font-size: 24px; letter-spacing: 2px;
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 24px; letter-spacing: 2px;
     color: #eafff0; text-shadow: 0 0 10px rgba(57,255,106,0.55);
     background: rgba(2,8,3,0.72);
     border: 1px solid rgba(57,255,106,0.3); border-radius: 10px;
@@ -959,7 +963,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.04e
+    v2026.07.04f
   </div>
 
   <div class="warning">
@@ -2693,7 +2697,7 @@ function dialBreathFrame(ts) {
       if (dot) dot.style.opacity = '0';
       if (inner) {
         const v = phase.from + (phase.to - phase.from) * easeInOut(p);
-        const scale = 0.97 + v * 0.06; // ±3% — bem discreto
+        const scale = 0.90 + v * 0.20; // ±10% — perceptível para acompanhar
         inner.style.transform = 'scale(' + scale.toFixed(4) + ')';
       }
     }
@@ -2724,6 +2728,10 @@ function fsSetSliderMode(mode, el) {
   document.querySelectorAll('#fs-mode-pills .fs-chip').forEach(p => p.classList.remove('active'));
   if (el) el.classList.add('active');
   syncQuickSlider();
+  if (mode !== 'freq') {
+    const wave = document.getElementById('fs-wave');
+    if (wave) wave.classList.remove('visible');
+  }
 }
 
 function syncQuickSlider() {
@@ -2863,6 +2871,32 @@ function animateLogoToTimer() {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+})();
+
+// ═══════════════════════════════════════════════════════════
+//  ONDA DA SESSÃO — visível só enquanto o dedo toca o slider em
+//  modo FREQ (evita ser um distrator constante durante a sessão)
+// ═══════════════════════════════════════════════════════════
+(function initWaveOnTouch() {
+  const wave = document.getElementById('fs-wave');
+  const slider = document.getElementById('fs-multi-slider');
+  if (!wave || !slider) return;
+  let hideTimer = null;
+
+  function showWave() {
+    if (fsSliderMode !== 'freq') return;
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    wave.classList.add('visible');
+  }
+  function hideWaveSoon() {
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => wave.classList.remove('visible'), 180);
+  }
+
+  ['pointerdown', 'touchstart', 'mousedown'].forEach(evt =>
+    slider.addEventListener(evt, showWave, { passive: true }));
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'mouseup'].forEach(evt =>
+    slider.addEventListener(evt, hideWaveSoon, { passive: true }));
 })();
 </script>
 </body>
