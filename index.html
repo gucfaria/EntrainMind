@@ -685,14 +685,41 @@
     .ring-svg { width: 108px !important; height: 108px !important; }
     .timer { font-size: 20px !important; }
 
-    /* Sessão — dial+onda à esquerda, ajustes rápidos à direita (usa a largura extra) */
-    #fs-main { flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding-top: 6px; }
-    #fs-main .fs-mode { position: static; order: -1; width: 100%; }
-    #fs-stage { flex: 0 1 auto; min-width: 0; }
-    #fs-dial { width: min(168px, 38vh); height: min(168px, 38vh); margin-bottom: 0; }
-    #fs-wave { height: 70px; }
-    #fs-quick { flex: 1 1 260px; max-width: 300px; padding: 0 10px; }
-    #fs-footer { height: 64px; }
+    /* Sessão — chips do slider à esquerda, dial central, chips cíclicos à
+       direita, slider atravessando embaixo. #fs-quick vira display:contents
+       para os filhos entrarem direto na grade. */
+    #fs-main {
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        "mode   mode   mode"
+        "left   stage  right"
+        "slider slider slider";
+      align-items: center; justify-items: center;
+      column-gap: 12px; padding: 2px 16px 0;
+    }
+    #fs-main .fs-mode { grid-area: mode; position: static; padding: 8px 0 0; }
+    #silent-warning { top: 30px; }
+    #fs-stage { grid-area: stage; width: auto; }
+    #fs-dial { width: min(48vh, 236px); height: min(48vh, 236px); margin-bottom: 34px; }
+    #fs-freq-big { font-size: 40px; bottom: -46px; }
+    #fs-freq-band { font-size: 9px; bottom: -62px; }
+    #fs-wave { top: calc(50% - 17px); height: 90px; }
+    #fs-quick { display: contents; }
+    #fs-mode-pills {
+      grid-area: left; display: grid; width: 100%; max-width: 250px;
+      grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+    }
+    #fs-quick-row2 {
+      grid-area: right; display: grid; width: 100%; max-width: 250px;
+      grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+    }
+    #fs-mode-pills .fs-chip, #fs-quick-row2 .fs-chip { min-width: 0; width: 100%; }
+    #fs-multi-slider { grid-area: slider; width: min(90vw, 620px); margin: 8px 0 12px; }
+    #fs-track { bottom: 54px; }
+    #fs-footer { height: 54px; flex-direction: row; gap: 20px; }
+    .btn-stop-fs { margin-top: 0; padding: 8px 26px; }
     .fs-swipe-hint { display: none; }
   }
 </style>
@@ -963,7 +990,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.04f
+    v2026.07.05a
   </div>
 
   <div class="warning">
@@ -2822,7 +2849,9 @@ function animateLogoToTimer() {
 
   // Onda do logo — envelope sin² zera nas bordas
   function buildLogoPath(t, prm) {
-    const X0 = 130, X1 = 551, N = 120;
+    const X0 = 130, X1 = 551;
+    // ≥14 pontos por ciclo — evita o aspecto serrilhado em frequências altas
+    const N = Math.min(560, Math.max(160, Math.round(prm.cycles * 14)));
     const ph = 2 * Math.PI * prm.speed * t;
     let d = 'M 80,190 L ' + X0 + ',190';
     for (let i = 0; i <= N; i++) {
@@ -2837,8 +2866,10 @@ function animateLogoToTimer() {
 
   // Onda da sessão — fusiforme como no logo (envelope sin²), de ponta a ponta
   function buildSessionPath(t, prm) {
-    const N = 160, W = 1000, CY = 60;
+    const W = 1000, CY = 60;
     const cycles = prm.cycles * 1.6; // proporcional à largura maior da tela
+    // ≥16 pontos por ciclo — em tela larga o serrilhado aparece antes
+    const N = Math.min(880, Math.max(240, Math.round(cycles * 16)));
     const ph = 2 * Math.PI * prm.speed * t;
     let d = '';
     for (let i = 0; i <= N; i++) {
