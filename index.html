@@ -208,7 +208,6 @@
     box-shadow: 0 0 12px 3px rgba(57,255,106,0.45);
     border: none; cursor: pointer;
   }
-  .fs-noise-pills { display: flex; gap: 6px; }
   .fs-pill {
     padding: 4px 10px; border-radius: 20px;
     border: 1px solid rgba(57,255,106,0.2); background: transparent;
@@ -594,12 +593,34 @@
   /* Ajuste rápido: um slider multifunção + pills cíclicas para escolhas discretas */
   #fs-quick {
     position: relative; z-index: 2; width: 100%; max-width: 380px;
-    padding: 0 28px 18px; display: flex; flex-direction: column; gap: 10px;
+    padding: 0 28px 18px; display: flex; flex-direction: column; gap: 13px;
   }
-  #fs-quick-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  #fs-quick-row2 { justify-content: center; flex-wrap: wrap; }
+  .fs-chip-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .fs-chip {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; flex: 1 1 0; min-width: 68px; min-height: 46px; padding: 8px 10px;
+    background: linear-gradient(160deg, #0e1c0e, #0a160a);
+    border: 1px solid #1a3a1a; border-radius: 12px;
+    cursor: pointer; transition: all 0.15s; touch-action: manipulation;
+    font-family: inherit;
+  }
+  .fs-chip .fc-main {
+    font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 1.5px;
+    color: var(--dim);
+  }
+  .fs-chip .fc-sub {
+    font-size: 8.5px; letter-spacing: 0.5px; color: rgba(106,170,106,0.4);
+    text-transform: uppercase;
+  }
+  .fs-chip.active {
+    border-color: var(--accent); background: linear-gradient(160deg, #0d2a0d, #081a08);
+    box-shadow: 0 0 12px rgba(57,255,106,0.22), inset 0 0 8px rgba(57,255,106,0.08);
+  }
+  .fs-chip.active .fc-main { color: var(--accent); }
+  .fs-chip.active .fc-sub { color: rgba(74,154,74,0.75); }
+  .fs-chip:active { transform: scale(0.97); }
   #fs-multi-slider {
-    -webkit-appearance: none; appearance: none; width: 100%; height: 5px; border-radius: 3px;
+    -webkit-appearance: none; appearance: none; width: 100%; height: 8px; border-radius: 4px;
     outline: none; cursor: pointer; background: rgba(57,255,106,0.18);
   }
   #fs-multi-slider.grad {
@@ -608,9 +629,13 @@
       #39ff6a 50%, #aaff00 65%, #ffdd00 80%, #ff6600 100%);
   }
   #fs-multi-slider::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-    background: #040a04; border: 2px solid #39ff6a;
-    box-shadow: 0 0 10px rgba(57,255,106,0.6); cursor: pointer;
+    -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%;
+    background: #040a04; border: 2.5px solid #39ff6a;
+    box-shadow: 0 0 12px rgba(57,255,106,0.65); cursor: pointer;
+  }
+  #fs-multi-slider::-moz-range-thumb {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #040a04; border: 2.5px solid #39ff6a; cursor: pointer;
   }
   /* Entrada animada: círculo do logo vira o círculo do timer, depois a UI aparece */
   #fs-overlay.entering #fs-track, #fs-overlay.entering #fs-footer { opacity: 0; }
@@ -618,6 +643,10 @@
 
   /* Time Timer — aro triplo do logo (halo largo + glow + linha branca), cunha, 12 ticks */
   .fs-timetimer { width: 100%; height: 100%; }
+  #fs-tt-inner {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    transform-origin: 50% 50%; will-change: transform;
+  }
   .tt-halo { fill: none; stroke: #00ff66; stroke-width: 6.4; opacity: 0.12; }
   .tt-glow { fill: none; stroke: #00dd55; stroke-width: 1.5; }
   .tt-core { fill: none; stroke: #ddfff0; stroke-width: 0.55; }
@@ -641,6 +670,26 @@
     padding: 5px 14px;
     box-shadow: 0 0 14px rgba(0,0,0,0.6), inset 0 0 10px rgba(57,255,106,0.06);
     pointer-events: none;
+  }
+  /* ═══════ ORIENTAÇÃO PAISAGEM ═══════ */
+  @media (orientation: landscape) and (max-height: 560px) {
+    /* Home — reduz o cabeçalho para caber mais conteúdo sem rolagem excessiva */
+    .ui { padding: 14px 24px 20px; gap: 14px; }
+    .header svg { max-width: 200px !important; }
+    .freq-display { font-size: 48px !important; margin-top: -52px !important; }
+    .ring-wrap { width: 108px !important; height: 108px !important; }
+    .ring-svg { width: 108px !important; height: 108px !important; }
+    .timer { font-size: 20px !important; }
+
+    /* Sessão — dial+onda à esquerda, ajustes rápidos à direita (usa a largura extra) */
+    #fs-main { flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding-top: 6px; }
+    #fs-main .fs-mode { position: static; order: -1; width: 100%; }
+    #fs-stage { flex: 0 1 auto; min-width: 0; }
+    #fs-dial { width: min(168px, 38vh); height: min(168px, 38vh); margin-bottom: 0; }
+    #fs-wave { height: 70px; }
+    #fs-quick { flex: 1 1 260px; max-width: 300px; padding: 0 10px; }
+    #fs-footer { height: 64px; }
+    .fs-swipe-hint { display: none; }
   }
 </style>
 </head>
@@ -867,8 +916,8 @@
       <div class="slider-group">
         <div class="slider-header"><span class="slider-label">Cor</span></div>
         <div class="pill-row" id="color-pills">
-          <div class="pill" onclick="setFlickerColor('white',this)">Branco</div>
-          <div class="pill active" onclick="setFlickerColor('amber',this)">Âmbar</div>
+          <div class="pill active" onclick="setFlickerColor('white',this)">Branco</div>
+          <div class="pill" onclick="setFlickerColor('amber',this)">Âmbar</div>
           <div class="pill" onclick="setFlickerColor('red',this)">Vermelho</div>
         </div>
       </div>
@@ -910,7 +959,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.04d
+    v2026.07.04e
   </div>
 
   <div class="warning">
@@ -953,6 +1002,7 @@
       <!-- Dial: moldura justa (trilha da respiração) + time timer horário -->
       <div id="fs-dial">
         <div id="fs-frame"></div>
+        <div id="fs-tt-inner">
         <svg class="fs-timetimer" viewBox="0 0 120 120">
           <defs>
             <radialGradient id="tt-grad" cx="50%" cy="50%" r="50%">
@@ -977,7 +1027,8 @@
           <circle class="tt-hub" cx="60" cy="60" r="2.6"/>
         </svg>
         <div class="fs-timer" id="fs-timer">20:00</div>
-        <!-- Respiração no aro: ponto orbital + fase/contagem sob o display -->
+        </div>
+        <!-- Respiração: ponto na moldura (caixa) ou pulso no aro (4·7·8/coerência) -->
         <div id="fs-breath-dot"></div>
         <div id="fs-breath-info"></div>
         <!-- Frequência grande, como no logo, cavalgando a moldura -->
@@ -986,27 +1037,44 @@
       </div>
     </div>
 
-    <!-- Ajuste rápido: slider multifunção + pills cíclicas para escolhas discretas -->
+    <!-- Ajuste rápido: slider multifunção + chips maiores para escolhas discretas -->
     <div id="fs-quick">
-      <div id="fs-quick-row">
-        <div class="fs-noise-pills" id="fs-mode-pills">
-          <div class="fs-pill active" id="fsm-freq" onclick="fsSetSliderMode('freq',this)">FREQ</div>
-          <div class="fs-pill" id="fsm-vol" onclick="fsSetSliderMode('vol',this)">VOL</div>
-          <div class="fs-pill" id="fsm-am" onclick="fsSetSliderMode('am',this)">AM</div>
-          <div class="fs-pill" id="fsm-luz" onclick="fsSetSliderMode('luz',this)" style="display:none">LUZ</div>
-        </div>
-        <span class="fs-ctrl-val" id="fs-quick-val">16 Hz</span>
+      <div class="fs-chip-row" id="fs-mode-pills">
+        <button class="fs-chip active" id="fsm-freq" onclick="fsSetSliderMode('freq',this)">
+          <span class="fc-main">FREQ</span><span class="fc-sub" id="fsm-freq-val">16 Hz</span>
+        </button>
+        <button class="fs-chip" id="fsm-vol" onclick="fsSetSliderMode('vol',this)">
+          <span class="fc-main">VOL</span><span class="fc-sub" id="fsm-vol-val">50%</span>
+        </button>
+        <button class="fs-chip" id="fsm-am" onclick="fsSetSliderMode('am',this)">
+          <span class="fc-main">AM</span><span class="fc-sub" id="fsm-am-val">50%</span>
+        </button>
+        <button class="fs-chip" id="fsm-luz" onclick="fsSetSliderMode('luz',this)" style="display:none">
+          <span class="fc-main">LUZ</span><span class="fc-sub" id="fsm-luz-val">70%</span>
+        </button>
       </div>
       <input type="range" id="fs-multi-slider" class="grad" min="1" max="40" value="16"
         oninput="fsMultiInput(this.value)">
-      <!-- Pills cíclicas: toque avança o valor; o rótulo mostra o atual -->
-      <div class="fs-noise-pills" id="fs-quick-row2">
-        <div class="fs-pill" id="fsm-noise" onclick="fsCycleNoise()">ROSA</div>
-        <div class="fs-pill" id="fsm-bin" onclick="fsToggleBin()">BIN</div>
-        <div class="fs-pill" id="fsm-flk" onclick="fsToggleFlick()">FLK</div>
-        <div class="fs-pill" id="fsm-color" onclick="fsCycleFlickColor()" style="display:none">ÂMBAR</div>
-        <div class="fs-pill" id="fsm-bg" onclick="fsToggleBg()" style="display:none">BG</div>
-        <div class="fs-pill" id="fsm-resp" onclick="fsCycleResp()">RESP</div>
+      <!-- Toques avançam o valor (ruído/cor) ou alternam ligado/desligado -->
+      <div class="fs-chip-row" id="fs-quick-row2">
+        <button class="fs-chip" id="fsm-noise" onclick="fsCycleNoise()">
+          <span class="fc-main">ROSA</span><span class="fc-sub">ruído</span>
+        </button>
+        <button class="fs-chip" id="fsm-bin" onclick="fsToggleBin()">
+          <span class="fc-main">BIN</span><span class="fc-sub">binaural</span>
+        </button>
+        <button class="fs-chip" id="fsm-flk" onclick="fsToggleFlick()">
+          <span class="fc-main">FLK</span><span class="fc-sub">flicker</span>
+        </button>
+        <button class="fs-chip" id="fsm-color" onclick="fsCycleFlickColor()" style="display:none">
+          <span class="fc-main">BRANCO</span><span class="fc-sub">cor flicker</span>
+        </button>
+        <button class="fs-chip" id="fsm-bg" onclick="fsToggleBg()" style="display:none">
+          <span class="fc-main">FUNDO</span><span class="fc-sub">áudio em 2ºplano</span>
+        </button>
+        <button class="fs-chip" id="fsm-resp" onclick="fsCycleResp()">
+          <span class="fc-main">RESP</span><span class="fc-sub">respiração</span>
+        </button>
       </div>
     </div>
 
@@ -1048,7 +1116,7 @@ let currentFreq = 16;
 let currentNoise = 'pink';
 let currentBinaural = true;
 let currentFlicker = false;
-let currentFlickerColor = 'amber';
+let currentFlickerColor = 'white'; // padrão branco
 
 const FLICKER_COLORS = {
   white:  'rgba(255,255,255,',
@@ -1156,37 +1224,58 @@ function updateTimerDisplay(s) {
   const pure = document.getElementById('fs-pure-timer');
   if (pure) pure.textContent = t;
 }
-function updateRing(fraction) {
+function updateRing(fraction, mode) {
   document.getElementById('ring-prog').style.strokeDashoffset = 427.26 * (1 - fraction);
-  updateTimeTimer(fraction);
+  updateTimeTimer(fraction, mode || 'remaining');
 }
 
 // ── TIME TIMER analógico (cunha) + relógio ──────────────
 const TT_R = 52; // raio da cunha (interno ao anel neon r=57)
-function ttWedgePath(f) {
+function fullCirclePath(cx, cy, r) {
+  return `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} Z`;
+}
+// mode='remaining' (padrão, contagem regressiva): 'value' é a fração que
+// resta — a cunha colorida é o COMPLEMENTO da fatia decorrida, encolhendo em
+// sentido horário a partir do topo (replica o Time Timer físico).
+// mode='elapsed' (infinito/contagem progressiva): 'value' é a fração já
+// decorrida dentro do laço atual — a cunha é uma fatia simples que CRESCE em
+// sentido horário a partir do topo. É a geometria correta para "quanto tempo
+// já passou", oposta (não apenas invertida) à de "quanto tempo falta".
+function ttWedgePath(value, mode) {
   const cx = 60, cy = 60, r = TT_R;
-  f = Math.max(0, Math.min(1, f));
+  value = Math.max(0, Math.min(1, value));
+  if (mode === 'elapsed') {
+    if (value <= 0.0001) return '';
+    if (value >= 0.9999) return fullCirclePath(cx, cy, r);
+    const a = value * 2 * Math.PI; // ângulo decorrido, horário a partir do topo
+    const x = cx + r * Math.sin(a);
+    const y = cy - r * Math.cos(a);
+    const large = value > 0.5 ? 1 : 0;
+    return `M ${cx} ${cy} L ${cx} ${cy - r} A ${r} ${r} 0 ${large} 1 ${x.toFixed(3)} ${y.toFixed(3)} Z`;
+  }
+  const f = value;
   if (f <= 0.0001) return '';
-  if (f >= 0.9999) return `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} Z`;
-  // Sentido horário (como o Time Timer físico): a borda móvel parte do topo e
-  // varre em sentido horário; a cunha restante sempre termina no topo (12h).
+  if (f >= 0.9999) return fullCirclePath(cx, cy, r);
   const a0 = (1 - f) * 2 * Math.PI; // ângulo da borda móvel, horário a partir do topo
   const x0 = cx + r * Math.sin(a0);
   const y0 = cy - r * Math.cos(a0);
   const large = f > 0.5 ? 1 : 0;
   return `M ${cx} ${cy} L ${x0.toFixed(3)} ${y0.toFixed(3)} A ${r} ${r} 0 ${large} 1 ${cx} ${cy - r} Z`;
 }
-function updateTimeTimer(f) {
+function updateTimeTimer(value, mode) {
+  mode = mode || 'remaining';
   const w = document.getElementById('tt-wedge');
-  if (w) w.setAttribute('d', ttWedgePath(f));
-  // Linha da borda móvel da cunha — brilho no "ponteiro"
+  if (w) w.setAttribute('d', ttWedgePath(value, mode));
+  // Linha da borda móvel da cunha — brilho no "ponteiro". Em ambos os modos
+  // o ângulo decorrido é o mesmo (a fração já "gasta" do laço atual).
+  const elapsed = mode === 'elapsed' ? value : 1 - value;
   const edge = document.getElementById('tt-edge');
   if (edge) {
-    if (f <= 0.0005) {
+    if (elapsed <= 0.0005) {
       edge.style.display = 'none';
     } else {
       edge.style.display = '';
-      const rad = (1 - Math.min(1, f)) * 2 * Math.PI;
+      const rad = Math.min(1, elapsed) * 2 * Math.PI;
       edge.setAttribute('x2', (60 + TT_R * Math.sin(rad)).toFixed(2));
       edge.setAttribute('y2', (60 - TT_R * Math.cos(rad)).toFixed(2));
     }
@@ -1673,7 +1762,7 @@ function startSession() {
   isRunning = true;
   elapsedSeconds = 0;
   if (!infiniteMode) timeRemaining = sessionDuration;
-  updateRing(infiniteMode ? 0 : 1);
+  updateRing(infiniteMode ? 0 : 1, infiniteMode ? 'elapsed' : 'remaining');
 
   const band = getBand(currentFreq);
   const bigEl = document.getElementById('fs-freq-big');
@@ -1724,11 +1813,11 @@ function startSession() {
       updateTimerDisplay(elapsedSeconds);
       document.getElementById('fs-timer').textContent = formatTime(elapsedSeconds);
       const ringFraction = (elapsedSeconds % 1800) / 1800;
-      updateRing(ringFraction);
+      updateRing(ringFraction, 'elapsed');
     } else {
       timeRemaining = Math.max(0, sessionStartRemaining - wallSeconds);
       updateTimerDisplay(timeRemaining);
-      updateRing(timeRemaining / sessionDuration);
+      updateRing(timeRemaining / sessionDuration, 'remaining');
       if (timeRemaining <= 0) stopSession();
     }
   }, 500); // 500ms para recalcular rapidamente ao voltar do background
@@ -1783,12 +1872,16 @@ function updateFsModeLabel() {
 function fsUpdateVolume(val) {
   document.getElementById('audio-slider').value = val;
   document.getElementById('audio-val').textContent = val + '%';
+  const chip = document.getElementById('fsm-vol-val');
+  if (chip) chip.textContent = val + '%';
   if (masterGain) masterGain.gain.value = val / 100 * 0.5;
 }
 
 function fsUpdateAM(val) {
   document.getElementById('am-slider').value = val;
   document.getElementById('am-val').textContent = val + '%';
+  const chip = document.getElementById('fsm-am-val');
+  if (chip) chip.textContent = val + '%';
   if (!audioCtx) return;
   const depth = val / 100;
   fsRebuildAM(depth);
@@ -1800,6 +1893,8 @@ function fsUpdateLight(val) {
   if (ls) ls.value = val;
   const lv = document.getElementById('light-val');
   if (lv) lv.textContent = val + '%';
+  const chip = document.getElementById('fsm-luz-val');
+  if (chip) chip.textContent = val + '%';
   if (isRunning && currentFlicker) { stopFlicker(); startFlicker(); }
 }
 
@@ -1838,11 +1933,11 @@ function fsUpdateFreq(val) {
   if (bigEl) bigEl.textContent = hz;
   const bandEl = document.getElementById('fs-freq-band');
   if (bandEl) bandEl.textContent = 'HZ · ' + getBand(hz);
+  const chip = document.getElementById('fsm-freq-val');
+  if (chip) chip.textContent = hz + ' Hz';
   if (fsSliderMode === 'freq') {
     const ms = document.getElementById('fs-multi-slider');
     if (ms) ms.value = hz;
-    const qv = document.getElementById('fs-quick-val');
-    if (qv) qv.textContent = hz + ' Hz';
   }
   if (amOsc) amOsc.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.05);
   if (binauralR) binauralR.frequency.setTargetAtTime(200 + hz, audioCtx.currentTime, 0.05);
@@ -1862,7 +1957,7 @@ function applyNoiseLive(type) {
   currentNoise = type;
   setNoiseQuiet(type); // mantém a sheet de configurações em sincronia
   const pill = document.getElementById('fsm-noise');
-  if (pill) pill.textContent = NOISE_LABEL[type];
+  if (pill) pill.querySelector('.fc-main').textContent = NOISE_LABEL[type];
   updateFsModeLabel();
   if (!audioCtx || !fsNoiseGainNode) return;
   if (noiseSource) { try { noiseSource.stop(); } catch(e){} }
@@ -1881,7 +1976,7 @@ function fsCycleFlickColor() {
   const idx = (FLICK_ORDER.indexOf(currentFlickerColor) + 1) % FLICK_ORDER.length;
   currentFlickerColor = FLICK_ORDER[idx];
   const pill = document.getElementById('fsm-color');
-  if (pill) pill.textContent = FLICK_LABEL[currentFlickerColor];
+  if (pill) pill.querySelector('.fc-main').textContent = FLICK_LABEL[currentFlickerColor];
   // Sincroniza as pills da sheet de configurações
   const colorPill = [...document.querySelectorAll('#color-pills .pill')]
     .find(pl => pl.getAttribute('onclick')?.includes(currentFlickerColor));
@@ -1930,18 +2025,27 @@ function fsToggleFlick() {
 }
 
 function syncFsControls() {
-  // Pills cíclicas com valores atuais
+  // Chips cíclicos com valores atuais
   const noisePill = document.getElementById('fsm-noise');
-  if (noisePill) noisePill.textContent = NOISE_LABEL[currentNoise] || 'ROSA';
+  if (noisePill) noisePill.querySelector('.fc-main').textContent = NOISE_LABEL[currentNoise] || 'ROSA';
   const colorPill = document.getElementById('fsm-color');
   if (colorPill) {
-    colorPill.textContent = FLICK_LABEL[currentFlickerColor] || 'ÂMBAR';
+    colorPill.querySelector('.fc-main').textContent = FLICK_LABEL[currentFlickerColor] || 'BRANCO';
     colorPill.style.display = currentFlicker ? '' : 'none';
   }
+  // Valores atuais nos chips do slider multifunção (informativo, sempre visível)
+  const freqChip = document.getElementById('fsm-freq-val');
+  if (freqChip) freqChip.textContent = currentFreq + ' Hz';
+  const volChip = document.getElementById('fsm-vol-val');
+  if (volChip) volChip.textContent = document.getElementById('audio-slider').value + '%';
+  const amChip = document.getElementById('fsm-am-val');
+  if (amChip) amChip.textContent = document.getElementById('am-slider').value + '%';
+  const luzChip = document.getElementById('fsm-luz-val');
+  if (luzChip) luzChip.textContent = document.getElementById('light-slider').value + '%';
   // LUZ só faz sentido com flicker ativo
   const luzPill = document.getElementById('fsm-luz');
   if (luzPill) luzPill.style.display = currentFlicker ? '' : 'none';
-  // BG só no iOS
+  // FUNDO (background) só no iOS
   const bgPill = document.getElementById('fsm-bg');
   if (bgPill) {
     bgPill.style.display = isIOS ? '' : 'none';
@@ -1955,7 +2059,7 @@ function syncFsControls() {
   // RESP com padrão atual
   const respPill = document.getElementById('fsm-resp');
   if (respPill) {
-    respPill.textContent = RESP_LABEL[respMode];
+    respPill.querySelector('.fc-main').textContent = RESP_LABEL[respMode];
     respPill.classList.toggle('active', respMode !== 'off');
   }
 }
@@ -2471,12 +2575,18 @@ function resetPager() {
 })();
 
 // ═══════════════════════════════════════════════════════════
-//  RESPIRAÇÃO NO ARO DO TIMER — pill RESP cicla os padrões
-//  Ponto discreto orbita o círculo (ciclo completo = 1 volta);
-//  fase + contagem regressiva aparecem sob o display central.
+//  RESPIRAÇÃO — pill RESP cicla os padrões, visual muda por tipo:
+//  · 'frame' (caixa 4·4·4·4): ponto percorre a MOLDURA externa —
+//    sobe pela esquerda (inspira), atravessa o topo (segura),
+//    desce pela direita (expira), volta pela base (segura).
+//  · 'pulse' (4·7·8 / coerência): sem ponto — o aro do time timer
+//    (só o círculo + display, não a frequência) incha e retrai
+//    levemente (±3%) no ritmo da fase, bem discreto.
+//  Fase + contagem regressiva sempre aparecem sob o display.
 // ═══════════════════════════════════════════════════════════
 const BREATH_PATTERNS = {
   box: {
+    type: 'frame',
     phases: [
       { name: 'Inspire', t: 4 },
       { name: 'Segure',  t: 4 },
@@ -2485,16 +2595,18 @@ const BREATH_PATTERNS = {
     ]
   },
   '478': {
+    type: 'pulse',
     phases: [
-      { name: 'Inspire', t: 4 },
-      { name: 'Segure',  t: 7 },
-      { name: 'Expire',  t: 8 }
+      { name: 'Inspire', t: 4, from: 0, to: 1 },
+      { name: 'Segure',  t: 7, from: 1, to: 1 },
+      { name: 'Expire',  t: 8, from: 1, to: 0 }
     ]
   },
   coherence: {
+    type: 'pulse',
     phases: [
-      { name: 'Inspire', t: 5 },
-      { name: 'Expire',  t: 5 }
+      { name: 'Inspire', t: 5, from: 0, to: 1 },
+      { name: 'Expire',  t: 5, from: 1, to: 0 }
     ]
   }
 };
@@ -2506,23 +2618,32 @@ let dialBreathRAF = null;
 let dialBreathStart = null;
 let _lastBreathInfo = '';
 
+function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+function resetBreathVisuals() {
+  const dot = document.getElementById('fs-breath-dot');
+  const inner = document.getElementById('fs-tt-inner');
+  if (dot) { dot.style.display = 'none'; dot.style.opacity = '0'; }
+  if (inner) inner.style.transform = '';
+}
+
 function fsCycleResp() {
   const idx = (RESP_ORDER.indexOf(respMode) + 1) % RESP_ORDER.length;
   respMode = RESP_ORDER[idx];
   const pill = document.getElementById('fsm-resp');
   if (pill) {
-    pill.textContent = RESP_LABEL[respMode];
+    const main = pill.querySelector('.fc-main') || pill;
+    main.textContent = RESP_LABEL[respMode];
     pill.classList.toggle('active', respMode !== 'off');
   }
-  const dot = document.getElementById('fs-breath-dot');
   const info = document.getElementById('fs-breath-info');
   if (respMode === 'off') {
-    if (dot) dot.style.display = 'none';
     if (info) info.textContent = '';
+    resetBreathVisuals();
     if (dialBreathRAF) { cancelAnimationFrame(dialBreathRAF); dialBreathRAF = null; }
   } else {
     dialBreathStart = null;
-    if (dot) dot.style.display = 'block';
+    _lastBreathInfo = '';
     if (!dialBreathRAF) dialBreathRAF = requestAnimationFrame(dialBreathFrame);
   }
 }
@@ -2531,10 +2652,12 @@ function dialBreathFrame(ts) {
   if (respMode === 'off') { dialBreathRAF = null; return; }
   const pat = BREATH_PATTERNS[respMode];
   const dial = document.getElementById('fs-dial');
+  const inner = document.getElementById('fs-tt-inner');
   const dot = document.getElementById('fs-breath-dot');
   const info = document.getElementById('fs-breath-info');
-  const dialVisible = currentPanel !== 2; // posições 0/1 mostram o dial
-  if (pat && dial && dot && dialVisible) {
+  const visible = dial && currentPanel !== 2; // posições 0/1 mostram o dial
+
+  if (pat && visible) {
     const total = pat.phases.reduce((s, ph) => s + ph.t, 0);
     if (dialBreathStart === null) dialBreathStart = ts;
     const e = ((ts - dialBreathStart) / 1000) % total;
@@ -2544,21 +2667,42 @@ function dialBreathFrame(ts) {
       acc += pat.phases[i].t;
     }
     const phase = pat.phases[idx];
-    // Uma volta completa no aro = um ciclo respiratório; arcos proporcionais às fases
-    const ang = (e / total) * 2 * Math.PI;
-    const w = dial.offsetWidth;
-    const R = w * (57 / 120);
-    dot.style.left = (w / 2 + R * Math.sin(ang)) + 'px';
-    dot.style.top = (w / 2 - R * Math.cos(ang)) + 'px';
-    dot.style.opacity = '1';
+    const p = Math.min(1, (e - acc) / phase.t);
     const remaining = Math.max(1, Math.ceil(phase.t - (e - acc)));
     const txt = phase.name.toUpperCase() + ' · ' + remaining;
     if (info && txt !== _lastBreathInfo) { _lastBreathInfo = txt; info.textContent = txt; }
-  } else if (dot) {
-    dot.style.opacity = '0';
+
+    if (pat.type === 'frame') {
+      // Ponto percorre o perímetro da MOLDURA externa (inset -28px do dial)
+      if (inner) inner.style.transform = '';
+      if (dot) {
+        dot.style.display = 'block';
+        const w = dial.offsetWidth, F = 28;
+        const L = -F, T = -F, R = w + F, B = w + F;
+        let x, y;
+        if (idx === 0)      { x = L; y = B - (B - T) * p; }      // inspire — sobe pela esquerda
+        else if (idx === 1) { x = L + (R - L) * p; y = T; }      // segure — atravessa o topo
+        else if (idx === 2) { x = R; y = T + (B - T) * p; }      // expire — desce pela direita
+        else                { x = R - (R - L) * p; y = B; }      // segure — volta pela base
+        dot.style.left = x + 'px';
+        dot.style.top = y + 'px';
+        dot.style.opacity = '1';
+      }
+    } else {
+      // Pulso discreto no aro do timer — sem ponto
+      if (dot) dot.style.opacity = '0';
+      if (inner) {
+        const v = phase.from + (phase.to - phase.from) * easeInOut(p);
+        const scale = 0.97 + v * 0.06; // ±3% — bem discreto
+        inner.style.transform = 'scale(' + scale.toFixed(4) + ')';
+      }
+    }
+  } else {
+    if (dot) dot.style.opacity = '0';
   }
   dialBreathRAF = requestAnimationFrame(dialBreathFrame);
 }
+
 
 // ═══════════════════════════════════════════════════════════
 //  SLIDER MULTIFUNÇÃO (painel 0) — um slider, função por pill
@@ -2577,7 +2721,7 @@ const FS_SLIDER_MODES = {
 
 function fsSetSliderMode(mode, el) {
   fsSliderMode = mode;
-  document.querySelectorAll('#fs-mode-pills .fs-pill').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#fs-mode-pills .fs-chip').forEach(p => p.classList.remove('active'));
   if (el) el.classList.add('active');
   syncQuickSlider();
 }
@@ -2588,16 +2732,12 @@ function syncQuickSlider() {
   if (!s || !m) return;
   s.min = m.min; s.max = m.max; s.value = m.get();
   s.classList.toggle('grad', !!m.grad);
-  const val = document.getElementById('fs-quick-val');
-  if (val) val.textContent = m.fmt(m.get());
 }
 
 function fsMultiInput(v) {
   const m = FS_SLIDER_MODES[fsSliderMode];
   if (!m) return;
-  m.apply(parseInt(v));
-  const val = document.getElementById('fs-quick-val');
-  if (val) val.textContent = m.fmt(parseInt(v));
+  m.apply(parseInt(v)); // cada setter já atualiza o sub-label do próprio chip
 }
 
 
