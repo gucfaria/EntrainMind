@@ -705,10 +705,15 @@
        (inset:-28px em cada lado, position:absolute — não conta na medida
        intrínseca do #fs-dial), senão ela vaza sobre os chips vizinhos. */
     #fs-stage { grid-area: stage; width: calc(min(58vh, 280px) + 56px); }
-    #fs-dial { width: min(58vh, 280px); height: min(58vh, 280px); margin-bottom: 8px; }
-    /* Número da frequência mergulha na metade inferior do aro, como no logo */
-    #fs-freq-big { font-size: 50px; bottom: 20px; }
-    #fs-freq-band { font-size: 9px; bottom: 4px; }
+    #fs-dial { width: min(58vh, 280px); height: min(58vh, 280px); margin-bottom: 16px; }
+    /* Número da frequência mergulha um pouco no aro, mas com folga da respiração */
+    #fs-freq-big { font-size: 50px; bottom: 6px; }
+    /* Banda Hz sai do aro (evita ficar ilegível sobre o traço verde) e ganha
+       um fundo leve para contraste, como o display digital */
+    #fs-freq-band {
+      font-size: 9px; bottom: -14px;
+      background: rgba(2,8,3,0.65); padding: 2px 9px; border-radius: 6px;
+    }
     #fs-wave { top: calc(50% - 17px); height: 90px; }
     #fs-quick { display: contents; }
     #fs-mode-pills {
@@ -994,7 +999,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.05b
+    v2026.07.05c
   </div>
 
   <div class="warning">
