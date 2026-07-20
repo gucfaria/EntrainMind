@@ -993,13 +993,14 @@
     <div class="nav-row">
       <a href="manual.html" class="btn-nav">📖 MANUAL</a>
       <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
+      <button class="btn-nav" onclick="showTickReport()" style="border-color:#3a3a1a;color:#8a8a4a">🔬 DIAGNÓSTICO</button>
     </div>
 
     </div><!-- /sheet-box -->
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.05c
+    v2026.07.19a
   </div>
 
   <div class="warning">
@@ -1011,6 +1012,10 @@
 </div>
 
 <div id="fs-overlay">
+  <div id="dbg-panel" style="position:fixed;left:8px;bottom:8px;z-index:350;
+    font-family:'Share Tech Mono',monospace;font-size:9px;line-height:1.5;
+    color:#6aaa6a;opacity:0.55;pointer-events:none;text-align:left;
+    background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:4px;">v2026.07.19a</div>
  <div id="fs-track">
 
   <!-- PAINEL 0 — Tela principal multifuncional: time timer + onda + respiração + ajuste rápido -->
@@ -1184,8 +1189,20 @@ function getBand(hz) {
   return 'GAMMA';
 }
 
+// Gesto manual no slider abandona um protocolo de múltiplos estágios
+function abandonProtocolIfManual() {
+  if (typeof isMultiStage === 'function' && isMultiStage() && !isRunning) {
+    activeProtocol = normalizeProtocol({
+      freq: currentFreq, noise: currentNoise, binaural: currentBinaural,
+      dur: Math.round(sessionDuration / 60), label: '', desc: ''
+    });
+    rebuildResolved();
+  }
+}
+
 function onFreqChange(val) {
   currentFreq = parseInt(val);
+  abandonProtocolIfManual();
   document.getElementById('freq-display').textContent = currentFreq;
   document.getElementById('freq-val').textContent = currentFreq + ' Hz';
   document.getElementById('freq-band').textContent = 'HERTZ · ' + getBand(currentFreq);
@@ -1195,6 +1212,7 @@ function onFreqChange(val) {
 
 function setFreqPreset(hz, band, el) {
   currentFreq = hz;
+  abandonProtocolIfManual();
   document.getElementById('freq-slider').value = hz;
   document.getElementById('freq-display').textContent = hz;
   document.getElementById('freq-val').textContent = hz + ' Hz';
@@ -1476,19 +1494,27 @@ function stopAudio() {
 // ── FLICKER ────────────────────────────────────────────
 function startFlicker() {
   // Vibração sincronizada (Android only — iOS não suporta)
-  if ('vibrate' in navigator && currentFreq <= 20) {
-    // Acima de ~20Hz motores de vibração não conseguem acompanhar
-    const halfMs = Math.round(500 / currentFreq);
-    const pattern = Array(Math.round(currentFreq * 4)).fill(halfMs); // ~4 segundos
+  // O padrão é re-derivado a cada repetição, então acompanha a rampa
+  // sem precisar reiniciar nada.
+  if ('vibrate' in navigator) {
     const repeatVibration = () => {
-      if (isRunning) { navigator.vibrate(pattern); vibrateTimer = setTimeout(repeatVibration, halfMs * pattern.length); }
+      if (!isRunning) return;
+      // Acima de ~20Hz motores de vibração não conseguem acompanhar
+      if (currentFreq <= 20) {
+        const hz = Math.max(1, currentFreq);
+        const halfMs = Math.round(500 / hz);
+        const pattern = Array(Math.max(2, Math.round(hz * 4))).fill(halfMs); // ~4 segundos
+        navigator.vibrate(pattern);
+        vibrateTimer = setTimeout(repeatVibration, halfMs * pattern.length);
+      } else {
+        navigator.vibrate(0);
+        vibrateTimer = setTimeout(repeatVibration, 2000); // reavalia se a rampa descer
+      }
     };
     repeatVibration();
   }
   if (!currentFlicker) return; // audio-only mode
   const overlay = document.getElementById('flicker');
-  const intensity = document.getElementById('light-slider').value / 100;
-  const halfPeriod = 1000 / (currentFreq * 2);
   // Set color
   overlay.style.background = FLICKER_COLORS[currentFlickerColor] + '1)';
   let accumulated = 0;
@@ -1496,8 +1522,13 @@ function startFlicker() {
   let flickPhase = 0;
 
   function frame(ts) {
+    // Lê frequência e intensidade AO VIVO — sem reiniciar o loop.
+    const halfPeriod = 1000 / (Math.max(0.5, currentFreq) * 2);
+    const intensity = flickIntensity;
     if (lastTs !== null) {
       accumulated += ts - lastTs;
+      // Clamp: se o rAF ficou parado (background), não gastar CPU no catch-up
+      if (accumulated > 1000) accumulated = accumulated % halfPeriod;
       while (accumulated >= halfPeriod) {
         accumulated -= halfPeriod;
         flickPhase = flickPhase === 0 ? 1 : 0;
@@ -1508,6 +1539,13 @@ function startFlicker() {
     rafId = requestAnimationFrame(frame);
   }
   rafId = requestAnimationFrame(frame);
+}
+
+// Intensidade do flicker lida ao vivo pelo loop
+let flickIntensity = 0.7;
+function syncFlickIntensity() {
+  const ls = document.getElementById('light-slider');
+  if (ls) flickIntensity = (parseFloat(ls.value) || 70) / 100;
 }
 
 function stopFlicker() {
@@ -1524,8 +1562,25 @@ function toggleSession() {
 
 function stopSession() {
   isRunning = false;
+  tickLogFlush();
   clearInterval(timerInterval);
   stopFlicker();
+  // Restaura volume mestre caso algum estágio tenha aplicado multiplicador
+  try {
+    if (masterGain && audioCtx) {
+      const base = parseFloat(document.getElementById('audio-slider').value) / 100;
+      masterGain.gain.setTargetAtTime(base, audioCtx.currentTime, 0.05);
+    }
+  } catch (e) {}
+  // Frequência volta ao valor inteiro do slider (a rampa pode tê-la deixado fracionária)
+  if (isMultiStage()) {
+    currentFreq = Math.round(activeProtocol.stages[0].freq);
+    const sl = document.getElementById('freq-slider');
+    if (sl) sl.value = currentFreq;
+    refreshFreqDisplay(currentFreq);
+  }
+  freqOffset = 0;
+  currentStageIdx = -1;
   try { if (dialBreathRAF) { cancelAnimationFrame(dialBreathRAF); dialBreathRAF = null; } } catch(e) {}
   try { if (_enterGhost) { _enterGhost.remove(); _enterGhost = null; } } catch(e) {}
   document.getElementById('fs-overlay').classList.remove('entering');
@@ -1648,10 +1703,261 @@ const PRESETS = {
   alzheimer:  { freq:40, noise:'white', binaural:true,  dur:20, flicker:true,  flickerColor:'amber', label:'40Hz PESQUISA', desc:'40 Hz · Branco · Flicker âmbar · 20min' },
 };
 
+// ══════════════════════════════════════════════════════════════════
+// MOTOR DE PROTOCOLOS (estágios)
+// ------------------------------------------------------------------
+// Modelo canônico: um protocolo é um array de estágios.
+//   { freq, dur, elastic?, step?, min?, flicker?, flickerColor?, vol?, am?, label? }
+//   - dur em SEGUNDOS
+//   - o estágio interpola a partir da freq do estágio ANTERIOR até `freq`
+//   - o primeiro estágio SUSTENTA `freq` (não interpola de lugar nenhum)
+//   - platô = estágio cuja freq repete a do anterior
+//   - step:true = salto imediato para `freq`, sustenta o resto do estágio
+//   - elastic:true = absorve a folga de duração da sessão
+// Presets planos {freq,dur} viram UM estágio elástico — comportamento
+// idêntico ao anterior, sem caso especial no runtime.
+// ══════════════════════════════════════════════════════════════════
+
+function normalizeProtocol(p) {
+  if (!p) return null;
+  if (p.stages && Array.isArray(p.stages)) {
+    return {
+      label: p.label || '', desc: p.desc || '',
+      noise: p.noise, binaural: p.binaural,
+      flickerColor: p.flickerColor || currentFlickerColor,
+      minDur: p.minDur || null, maxDur: p.maxDur || null,
+      endSignal: p.endSignal || false,
+      defaultDur: p.dur || null,
+      stages: p.stages.map(s => ({
+        freq: Number(s.freq),
+        dur: (s.dur || 0) * 60,
+        elastic: !!s.elastic,
+        step: !!s.step,
+        min: (s.min || 0) * 60,
+        flicker: (s.flicker === undefined ? null : !!s.flicker),
+        flickerColor: s.flickerColor || null,
+        vol: (s.vol === undefined ? 1 : Number(s.vol)),
+        am: (s.am === undefined ? null : Number(s.am)),
+        label: s.label || ''
+      }))
+    };
+  }
+  // Preset plano → estágio único elástico
+  return {
+    label: p.label || '', desc: p.desc || '',
+    noise: p.noise, binaural: p.binaural,
+    flickerColor: p.flickerColor || currentFlickerColor,
+    minDur: null, maxDur: null, endSignal: false,
+    defaultDur: p.dur || null,
+    stages: [{
+      freq: Number(p.freq), dur: 0, elastic: true, step: false, min: 0,
+      flicker: null, // preset plano já aplicou flicker via applyPreset
+      flickerColor: null,
+      vol: 1, am: null, label: ''
+    }]
+  };
+}
+
+// Distribui a duração total da sessão pelos estágios.
+// Retorna array com t0/t1 absolutos em segundos.
+function resolveStages(proto, totalSec, infinite) {
+  if (!proto || !proto.stages.length) return [];
+  const st = proto.stages;
+  let fixed = 0, elasticN = 0, elasticMin = 0;
+  st.forEach(s => {
+    if (s.elastic) { elasticN++; elasticMin += s.min; }
+    else fixed += s.dur;
+  });
+  let slack = Math.max(0, (totalSec || 0) - fixed);
+  const out = [];
+  let t = 0;
+  for (let i = 0; i < st.length; i++) {
+    const s = st[i];
+    let d;
+    if (s.elastic) {
+      if (infinite) d = Infinity;
+      else d = Math.max(s.min, slack / elasticN);
+    } else {
+      d = s.dur;
+    }
+    out.push(Object.assign({}, s, { idx: i, t0: t, t1: t + d, len: d }));
+    t = t + d;
+    if (!isFinite(t)) break; // estágios após um elástico infinito nunca disparam
+  }
+  return out;
+}
+
+function totalResolved(res) {
+  if (!res.length) return 0;
+  return res[res.length - 1].t1;
+}
+
+// Índice do estágio ativo em t (segundos decorridos)
+function stageIndexAtTime(res, t) {
+  if (!res.length) return -1;
+  for (let i = 0; i < res.length; i++) {
+    if (t < res[i].t1) return i;
+  }
+  return res.length - 1;
+}
+
+// SEM ESTADO: dado t, devolve a frequência que DEVE valer agora.
+// Nunca acumula — se o tick não disparar, o próximo já corrige.
+function freqAtTime(res, t, offset) {
+  if (!res.length) return currentFreq;
+  const i = stageIndexAtTime(res, t);
+  const s = res[i];
+  let hz;
+  if (i === 0 || s.step) {
+    hz = s.freq;
+  } else {
+    const prev = res[i - 1].freq;
+    // janela de rampa: a duração do estágio, ou a nominal se ele for infinito
+    let win = s.len;
+    if (!isFinite(win)) win = (s.dur > 0 ? s.dur : 0);
+    const p = win > 0 ? Math.min(1, Math.max(0, (t - s.t0) / win)) : 1;
+    hz = prev + (s.freq - prev) * p;
+  }
+  hz = hz + (offset || 0);
+  return Math.min(40, Math.max(1, hz));
+}
+
+// Formatação: inteiro fora de rampa, uma casa durante
+function fmtHz(hz) {
+  const r = Math.round(hz);
+  return (Math.abs(hz - r) < 0.05) ? String(r) : hz.toFixed(1);
+}
+
+// Estado do protocolo ativo
+let activeProtocol = normalizeProtocol(PRESETS.tdah);
+let resolvedStages = [];
+let freqOffset = 0;
+let currentStageIdx = -1;
+
+function rebuildResolved() {
+  resolvedStages = resolveStages(activeProtocol, sessionDuration, infiniteMode);
+}
+
+// Protocolo de estágio único adota a frequência que o usuário escolheu no
+// slider. Garante que os presets planos se comportem exatamente como antes.
+function syncProtocolToManual() {
+  if (!activeProtocol) activeProtocol = normalizeProtocol(PRESETS.tdah);
+  if (activeProtocol.stages.length === 1) {
+    activeProtocol.stages[0].freq = currentFreq;
+  }
+}
+
+function isMultiStage() {
+  return !!(activeProtocol && activeProtocol.stages.length > 1);
+}
+
+// Aplica os parâmetros declarados no estágio (nulo = não mexe)
+function onStageEnter(s) {
+  if (!s) return;
+  if (s.flicker !== null && s.flicker !== undefined) {
+    if (s.flickerColor) currentFlickerColor = s.flickerColor;
+    if (s.flicker !== currentFlicker) {
+      currentFlicker = s.flicker;
+      stopFlicker();
+      if (isRunning) startFlicker();
+    } else if (s.flickerColor) {
+      const ov = document.getElementById('flicker');
+      if (ov) ov.style.background = FLICKER_COLORS[currentFlickerColor] + '1)';
+    }
+  }
+  if (s.vol !== undefined && s.vol !== 1) {
+    const base = parseFloat(document.getElementById('audio-slider').value) / 100;
+    const v = Math.min(1, Math.max(0, base * s.vol));
+    if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.5);
+  }
+  if (s.am !== null && s.am !== undefined) {
+    fsRebuildAM(s.am);
+  }
+}
+
+// ── INSTRUMENTAÇÃO DE TICKS ───────────────────────────
+// Mede o intervalo real entre ticks do setInterval para decidir, com dado,
+// se um relógio baseado em AudioContext é necessário para sessões longas.
+let tickLog = null;
+
+function tickLogStart() {
+  const now = Date.now();
+  tickLog = { start: now, last: now, flushed: now, ticks: 0, maxGap: 0, gaps: [] };
+}
+
+function tickLogRecord() {
+  if (!tickLog) return;
+  const now = Date.now();
+  const gap = now - tickLog.last;
+  tickLog.last = now;
+  tickLog.ticks++;
+  if (gap > tickLog.maxGap) tickLog.maxGap = gap;
+  if (gap > 1500 && tickLog.gaps.length < 400) {
+    tickLog.gaps.push([Math.round((now - tickLog.start) / 1000), gap]);
+  }
+  if (now - tickLog.flushed > 30000) tickLogFlush();
+}
+
+function tickLogFlush() {
+  if (!tickLog) return;
+  tickLog.flushed = Date.now();
+  try {
+    const all = JSON.parse(localStorage.getItem('em_ticklog') || '[]');
+    const entry = {
+      date: new Date(tickLog.start).toLocaleString('pt-BR'),
+      startMs: tickLog.start,
+      durSec: Math.round((Date.now() - tickLog.start) / 1000),
+      ticks: tickLog.ticks,
+      maxGap: tickLog.maxGap,
+      gaps: tickLog.gaps
+    };
+    if (all.length && all[0].startMs === tickLog.start) all[0] = entry;
+    else all.unshift(entry);
+    localStorage.setItem('em_ticklog', JSON.stringify(all.slice(0, 5)));
+  } catch (e) {}
+}
+
+document.addEventListener('visibilitychange', () => { if (isRunning) tickLogFlush(); });
+
+// ── PAINEL TEMPORÁRIO DE VERIFICAÇÃO (remover no arquivo 2) ──
+function dbgTickPanel() {
+  const el = document.getElementById('dbg-panel');
+  if (!el || !tickLog) return;
+  const st = resolvedStages.length ? (currentStageIdx + 1) + '/' + resolvedStages.length : '–';
+  el.innerHTML = 'v2026.07.19a<br>' +
+    'hz ' + fmtHz(currentFreq) + ' · est ' + st + '<br>' +
+    'ticks ' + tickLog.ticks + ' · gapmax ' + tickLog.maxGap + 'ms<br>' +
+    'buracos ' + tickLog.gaps.length;
+}
+
+function showTickReport() {
+  let all = [];
+  try { all = JSON.parse(localStorage.getItem('em_ticklog') || '[]'); } catch (e) {}
+  if (!all.length) { alert('Nenhuma sessão registrada ainda.'); return; }
+  const lines = all.map(e => {
+    const esperado = Math.round(e.durSec * 2);
+    const perda = esperado > 0 ? Math.round(100 * (1 - e.ticks / esperado)) : 0;
+    let txt = e.date + '\n' +
+      '  duração: ' + Math.round(e.durSec / 60) + ' min\n' +
+      '  ticks: ' + e.ticks + ' de ~' + esperado + ' (perda ' + perda + '%)\n' +
+      '  maior intervalo: ' + (e.maxGap / 1000).toFixed(1) + ' s\n' +
+      '  buracos >1,5s: ' + e.gaps.length;
+    if (e.gaps.length) {
+      const top = e.gaps.slice().sort((a, b) => b[1] - a[1]).slice(0, 5);
+      txt += '\n  maiores: ' + top.map(g => '+' + Math.round(g[0] / 60) + 'min→' + (g[1] / 1000).toFixed(1) + 's').join(', ');
+    }
+    return txt;
+  });
+  alert('DIAGNÓSTICO DE TICKS\n(interno — decide se o relógio de áudio é necessário)\n\n' + lines.join('\n\n'));
+}
+
 function applyPreset(key) {
   const p = PRESETS[key];
   if (!p) return;
-  // Frequência
+  activeProtocol = normalizeProtocol(p);
+  activeProtocol.sourceKey = key;
+  // Frequência inicial = primeiro estágio
+  p.freq = (p.freq !== undefined) ? p.freq : activeProtocol.stages[0].freq;
   currentFreq = p.freq;
   document.getElementById('freq-slider').value = p.freq;
   document.getElementById('freq-display').textContent = p.freq;
@@ -1703,6 +2009,7 @@ function applyPreset(key) {
   }
 
   updateBinauralSub();
+  rebuildResolved();
 }
 
 function setNoiseQuiet(type) {
@@ -1715,32 +2022,96 @@ function setNoiseQuiet(type) {
 }
 
 // ── CUSTOM SLOTS ──────────────────────────────────────
+// ── SLOTS (array de tamanho variável: em_slots) ───────
+// Cada slot guarda CÓPIA INTEGRAL dos estágios — é, estruturalmente,
+// um protocolo de usuário. A UI atual expõe dois; o formato não limita.
+const SLOT_VERSION = 1;
+
+function readSlots() {
+  let arr = null;
+  try { arr = JSON.parse(localStorage.getItem('em_slots') || 'null'); } catch (e) {}
+  if (Array.isArray(arr)) return arr;
+  // Migração das chaves antigas em_custom1 / em_custom2 (mantidas como backup)
+  arr = [];
+  [1, 2].forEach(n => {
+    let old = null;
+    try { old = JSON.parse(localStorage.getItem('em_custom' + n) || 'null'); } catch (e) {}
+    if (old) {
+      const proto = normalizeProtocol(old);
+      arr[n - 1] = {
+        label: old.label || ('CUSTOM ' + n),
+        desc: old.desc || '',
+        stages: proto.stages,
+        noise: old.noise, binaural: old.binaural,
+        flicker: old.flicker || false, flickerColor: old.flickerColor || 'white',
+        dur: old.dur, volume: old.volume, amDepth: old.amDepth,
+        sourceKey: null, sourceVersion: null, migrated: true
+      };
+    } else {
+      arr[n - 1] = null;
+    }
+  });
+  try { localStorage.setItem('em_slots', JSON.stringify(arr)); } catch (e) {}
+  return arr;
+}
+
+function writeSlots(arr) {
+  try { localStorage.setItem('em_slots', JSON.stringify(arr)); } catch (e) {}
+}
+
+function slotDesc(slot) {
+  if (!slot) return '';
+  if (slot.desc) return slot.desc;
+  const noiseLabel = {white:'Branco', pink:'Rosa', brown:'Marrom'}[slot.noise] || slot.noise;
+  const st = slot.stages || [];
+  const head = st.length > 1
+    ? st.map(s => fmtHz(s.freq)).join('→') + ' Hz'
+    : (st.length ? fmtHz(st[0].freq) + ' Hz' : '');
+  return head + ' · ' + noiseLabel + ' · ' + slot.dur + 'min';
+}
+
 function loadCustomSlots() {
-  [1,2].forEach(n => {
-    const saved = JSON.parse(localStorage.getItem('em_custom' + n) || 'null');
+  const slots = readSlots();
+  [1, 2].forEach(n => {
+    const saved = slots[n - 1];
     if (saved) {
       document.getElementById('custom' + n + '-name').textContent = '★ ' + (saved.label || 'PERSONALIZADO ' + n);
-      document.getElementById('custom' + n + '-desc').textContent = saved.desc || '';
+      document.getElementById('custom' + n + '-desc').textContent = slotDesc(saved);
       document.getElementById('custom' + n + '-btn').classList.add('has-custom');
     }
   });
 }
 
 function saveCustomSlot(n) {
-  const noiseLabel = {white:'Branco', pink:'Rosa', brown:'Marrom'}[currentNoise];
   const dur = Math.round(sessionDuration / 60) || 20;
   const vol = document.getElementById('audio-slider').value;
   const am  = document.getElementById('am-slider').value;
-  const preset = {
-    freq: currentFreq, noise: currentNoise, binaural: currentBinaural,
-    dur: dur, flicker: currentFlicker, flickerColor: currentFlickerColor,
-    volume: vol, amDepth: am,
+  syncProtocolToManual();
+  // Cópia profunda dos estágios — o slot não referencia o protocolo nativo
+  const stages = JSON.parse(JSON.stringify(activeProtocol.stages)).map(s => ({
+    freq: s.freq, dur: s.dur / 60, elastic: s.elastic, step: s.step,
+    min: s.min / 60, flicker: s.flicker, flickerColor: s.flickerColor,
+    vol: s.vol, am: s.am, label: s.label
+  }));
+  const slot = {
     label: 'CUSTOM ' + n,
-    desc: currentFreq + ' Hz · ' + noiseLabel + ' · ' + dur + 'min'
+    desc: '',
+    stages: stages,
+    noise: currentNoise, binaural: currentBinaural,
+    flicker: currentFlicker, flickerColor: currentFlickerColor,
+    dur: dur, volume: vol, amDepth: am,
+    minDur: activeProtocol.minDur, maxDur: activeProtocol.maxDur,
+    endSignal: activeProtocol.endSignal || false,
+    sourceKey: activeProtocol.sourceKey || null,
+    sourceVersion: SLOT_VERSION,
+    savedAt: Date.now()
   };
-  localStorage.setItem('em_custom' + n, JSON.stringify(preset));
-  document.getElementById('custom' + n + '-name').textContent = '★ CUSTOM ' + n;
-  document.getElementById('custom' + n + '-desc').textContent = preset.desc;
+  slot.desc = slotDesc(slot);
+  const slots = readSlots();
+  slots[n - 1] = slot;
+  writeSlots(slots);
+  document.getElementById('custom' + n + '-name').textContent = '★ ' + slot.label;
+  document.getElementById('custom' + n + '-desc').textContent = slot.desc;
   document.getElementById('custom' + n + '-btn').classList.add('has-custom');
 }
 
@@ -1775,6 +2146,7 @@ function toggleInfinite() {
     btn.style.background = '#060f06';
     btn.style.boxShadow = '0 0 10px rgba(57,255,106,0.3)';
   }
+  rebuildResolved();
 }
 
 function setDuration(min, el) {
@@ -1793,6 +2165,7 @@ function setDuration(min, el) {
     timeRemaining = sessionDuration;
     updateTimerDisplay(timeRemaining);
     updateRing(1);
+    rebuildResolved();
     if (el) el.classList.add('active');
   }
 }
@@ -1845,9 +2218,35 @@ function startSession() {
   const sessionStartTime = Date.now();
   const sessionStartRemaining = timeRemaining;
 
+  // Resolve os estágios para esta sessão
+  syncProtocolToManual();
+  rebuildResolved();
+  currentStageIdx = -1;
+  freqOffset = 0;
+  tickLogStart();
+
   timerInterval = setInterval(() => {
     const wallSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
     elapsedSeconds = wallSeconds;
+    tickLogRecord();
+
+    // ── RAMPA SEM ESTADO ──────────────────────────────
+    // Calculada do zero a partir do tempo decorrido. Se o tick não
+    // disparar (throttling), o próximo já corrige — nunca acumula erro.
+    if (resolvedStages.length) {
+      const t = (Date.now() - sessionStartTime) / 1000;
+      const target = freqAtTime(resolvedStages, t, freqOffset);
+      if (Math.abs(target - currentFreq) > 0.001) {
+        applyFreqToAudio(target);
+        refreshFreqDisplay(target);
+      }
+      const si = stageIndexAtTime(resolvedStages, t);
+      if (si !== currentStageIdx) {
+        currentStageIdx = si;
+        onStageEnter(resolvedStages[si]);
+      }
+    }
+    dbgTickPanel();
 
     if (infiniteMode) {
       updateTimerDisplay(elapsedSeconds);
@@ -1935,7 +2334,7 @@ function fsUpdateLight(val) {
   if (lv) lv.textContent = val + '%';
   const chip = document.getElementById('fsm-luz-val');
   if (chip) chip.textContent = val + '%';
-  if (isRunning && currentFlicker) { stopFlicker(); startFlicker(); }
+  syncFlickIntensity(); // loop lê ao vivo — sem reiniciar
 }
 
 let fsDepthGainNode = null;
@@ -1962,8 +2361,28 @@ function fsRebuildAM(depth) {
 
 let fsNoiseGainNode = null;
 
+// Aplica frequência (float) SOMENTE nos nós de áudio. Usada pela rampa.
+// Não toca em slider nem em DOM pesado.
+function applyFreqToAudio(hz) {
+  currentFreq = hz;
+  if (amOsc) amOsc.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.05);
+  if (binauralR) binauralR.frequency.setTargetAtTime(200 + hz, audioCtx.currentTime, 0.05);
+}
+
+// Atualiza os displays de frequência (leves) — usada pela rampa a cada tick
+function refreshFreqDisplay(hz) {
+  const txt = fmtHz(hz);
+  const bigEl = document.getElementById('fs-freq-big');
+  if (bigEl) bigEl.textContent = txt;
+  const bandEl = document.getElementById('fs-freq-band');
+  if (bandEl) bandEl.textContent = 'HZ · ' + getBand(hz);
+  const disp = document.getElementById('freq-display');
+  if (disp) disp.textContent = txt;
+}
+
+// Caminho de INTERAÇÃO do usuário: arredonda, mexe no slider e no DOM completo.
 function fsUpdateFreq(val) {
-  const hz = parseInt(val);
+  const hz = Math.round(parseFloat(val));
   currentFreq = hz;
   document.getElementById('freq-slider').value = hz;
   document.getElementById('freq-display').textContent = hz;
@@ -1979,9 +2398,8 @@ function fsUpdateFreq(val) {
     const ms = document.getElementById('fs-multi-slider');
     if (ms) ms.value = hz;
   }
-  if (amOsc) amOsc.frequency.setTargetAtTime(hz, audioCtx.currentTime, 0.05);
-  if (binauralR) binauralR.frequency.setTargetAtTime(200 + hz, audioCtx.currentTime, 0.05);
-  if (currentFlicker) { stopFlicker(); startFlicker(); }
+  applyFreqToAudio(hz);
+  // Flicker NÃO é mais reiniciado: o loop lê currentFreq ao vivo.
 }
 
 // Pills cíclicas: cada toque avança o valor; o rótulo mostra o atual
@@ -2204,15 +2622,17 @@ function startCustomPress(n) {
 function endCustomPress(n) {
   clearTimeout(_pressTimer);
   if (!_pressLong) {
-    // Toque curto → aplicar preset salvo (se existir)
-    const raw = localStorage.getItem('em_custom' + n);
-    if (raw) {
-      const saved = JSON.parse(raw);
-      currentFreq = saved.freq;
-      document.getElementById('freq-slider').value = saved.freq;
-      document.getElementById('freq-display').textContent = saved.freq;
-      document.getElementById('freq-val').textContent = saved.freq + ' Hz';
-      document.getElementById('freq-band').textContent = 'HERTZ · ' + getBand(saved.freq);
+    // Toque curto → aplicar protocolo salvo (se existir)
+    const saved = readSlots()[n - 1];
+    if (saved) {
+      activeProtocol = normalizeProtocol(saved);
+      activeProtocol.sourceKey = saved.sourceKey || null;
+      const f0 = Math.round(activeProtocol.stages[0].freq);
+      currentFreq = f0;
+      document.getElementById('freq-slider').value = f0;
+      document.getElementById('freq-display').textContent = fmtHz(activeProtocol.stages[0].freq);
+      document.getElementById('freq-val').textContent = fmtHz(activeProtocol.stages[0].freq) + ' Hz';
+      document.getElementById('freq-band').textContent = 'HERTZ · ' + getBand(f0);
       document.querySelectorAll('#freq-presets .pill').forEach(p => p.classList.remove('active'));
       setNoiseQuiet(saved.noise);
       currentBinaural = saved.binaural;
@@ -2235,6 +2655,8 @@ function endCustomPress(n) {
         document.getElementById('am-slider').value = saved.amDepth;
         document.getElementById('am-val').textContent = saved.amDepth + '%';
       }
+      syncFlickIntensity();
+      rebuildResolved();
     } else {
       // Slot vazio → salvar
       saveCustomSlot(n);
@@ -2290,6 +2712,7 @@ function cancelCustomPress() {
       timeRemaining = sessionDuration;
       updateTimerDisplay(timeRemaining);
       updateRing(1);
+      rebuildResolved();
     }
     e.preventDefault();
   }
@@ -2337,6 +2760,8 @@ function onFlkCircle() {
 // Init
 loadCustomSlots();
 loadLastState();
+syncFlickIntensity();
+rebuildResolved();
 
 function saveState() {
   const state = {
@@ -2348,6 +2773,17 @@ function saveState() {
     duration: sessionDuration,
     volume: document.getElementById('audio-slider').value,
     amDepth: document.getElementById('am-slider').value,
+    // Forma canônica — `freq` acima fica só por compatibilidade retroativa
+    stages: (activeProtocol ? activeProtocol.stages.map(s => ({
+      freq: s.freq, dur: s.dur / 60, elastic: s.elastic, step: s.step,
+      min: s.min / 60, flicker: s.flicker, flickerColor: s.flickerColor,
+      vol: s.vol, am: s.am, label: s.label
+    })) : null),
+    protoLabel: activeProtocol ? activeProtocol.label : '',
+    sourceKey: activeProtocol ? (activeProtocol.sourceKey || null) : null,
+    minDur: activeProtocol ? activeProtocol.minDur : null,
+    maxDur: activeProtocol ? activeProtocol.maxDur : null,
+    endSignal: activeProtocol ? !!activeProtocol.endSignal : false,
   };
   localStorage.setItem('em_last_state', JSON.stringify(state));
 }
@@ -2356,12 +2792,29 @@ function loadLastState() {
   const saved = JSON.parse(localStorage.getItem('em_last_state') || 'null');
   if (!saved) return;
 
+  // Protocolo — estado antigo (só `freq` escalar) cai no ramo plano
+  if (saved.stages && Array.isArray(saved.stages) && saved.stages.length) {
+    activeProtocol = normalizeProtocol({
+      stages: saved.stages, label: saved.protoLabel || '',
+      noise: saved.noise, binaural: saved.binaural,
+      flickerColor: saved.flickerColor,
+      minDur: saved.minDur, maxDur: saved.maxDur, endSignal: saved.endSignal
+    });
+    activeProtocol.sourceKey = saved.sourceKey || null;
+  } else {
+    activeProtocol = normalizeProtocol({
+      freq: saved.freq, noise: saved.noise, binaural: saved.binaural,
+      dur: saved.duration ? Math.round(saved.duration / 60) : 20
+    });
+  }
+
   // Frequência
-  currentFreq = saved.freq;
-  document.getElementById('freq-slider').value = saved.freq;
-  document.getElementById('freq-display').textContent = saved.freq;
-  document.getElementById('freq-val').textContent = saved.freq + ' Hz';
-  document.getElementById('freq-band').textContent = 'HERTZ · ' + getBand(saved.freq);
+  const f0 = Math.round(activeProtocol.stages[0].freq);
+  currentFreq = f0;
+  document.getElementById('freq-slider').value = f0;
+  document.getElementById('freq-display').textContent = fmtHz(activeProtocol.stages[0].freq);
+  document.getElementById('freq-val').textContent = fmtHz(activeProtocol.stages[0].freq) + ' Hz';
+  document.getElementById('freq-band').textContent = 'HERTZ · ' + getBand(f0);
 
   // Ruído
   if (saved.noise) {
@@ -2405,6 +2858,9 @@ function loadLastState() {
       .find(p => p.textContent.trim() === durMin + "'");
     if (durPill) durPill.classList.add('active');
   }
+
+  syncFlickIntensity();
+  rebuildResolved();
 }
 
 // ── FEEDBACK & HISTÓRICO ──────────────────────────────
