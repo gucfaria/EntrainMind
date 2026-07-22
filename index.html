@@ -794,6 +794,9 @@
 
     <div class="freq-display" id="freq-display" style="margin-top:-90px">16</div>
     <div class="freq-band" id="freq-band">HERTZ · BETA</div>
+    <div id="proto-chip" style="display:none;margin-top:4px;font-family:'Share Tech Mono',monospace;
+      font-size:10px;letter-spacing:1.5px;color:var(--accent);border:1px solid var(--accent-dim);
+      border-radius:20px;padding:3px 10px;background:#060f06;"></div>
   </div>
 
   <!-- Slider de frequência com gradiente de estimulação -->
@@ -893,6 +896,10 @@
         <span class="preset-name">🔬 40Hz PESQUISA</span>
         <span class="preset-desc">40 Hz · Branco · Flicker âmbar · 20min</span>
       </button>
+      <button class="preset-btn" onclick="applyPreset('powernap')">
+        <span class="preset-name">😴 POWER NAP</span>
+        <span class="preset-desc">10→5,5→14 Hz · Marrom · 13–30min</span>
+      </button>
       <button class="preset-btn custom-slot" id="custom1-btn"
         ontouchstart="startCustomPress(1)" ontouchend="endCustomPress(1)"
         onmousedown="startCustomPress(1)" onmouseup="endCustomPress(1)" onmouseleave="cancelCustomPress()">
@@ -944,6 +951,23 @@
       </div>
       <input type="range" id="am-slider" min="0" max="100" value="50"
         oninput="document.getElementById('am-val').textContent=this.value+'%'">
+    </div>
+
+    <div class="slider-group" id="endsignal-group">
+      <div class="slider-header">
+        <span class="slider-label">Sinal sonoro ao fim</span>
+        <span class="slider-value" id="endsignal-sub">Ligado</span>
+      </div>
+      <div class="pill-row" id="endsignal-pills">
+        <div class="pill active" onclick="toggleEndSignal(true); setEndSignalPill(this)">LIGADO</div>
+        <div class="pill" onclick="toggleEndSignal(false); setEndSignalPill(this)">DESLIGADO</div>
+      </div>
+      <div id="endsignal-warn" style="display:none;font-size:10px;color:var(--warn);
+        line-height:1.4;margin-top:6px;">
+        ⚠ No iOS o sinal <strong>não toca em modo silencioso</strong>.
+        EntrainMind não é um despertador confiável — use um alarme separado
+        se você precisa acordar em horário.
+      </div>
     </div>
 
     <!-- toggles ocultos — controlados pelos botões circulares acima -->
@@ -1000,7 +1024,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.19b
+    v2026.07.20a
   </div>
 
   <div class="warning">
@@ -1012,10 +1036,6 @@
 </div>
 
 <div id="fs-overlay">
-  <div id="dbg-panel" style="position:fixed;left:8px;bottom:8px;z-index:350;
-    font-family:'Share Tech Mono',monospace;font-size:9px;line-height:1.5;
-    color:#6aaa6a;opacity:0.55;pointer-events:none;text-align:left;
-    background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:4px;">v2026.07.19b</div>
  <div id="fs-track">
 
   <!-- PAINEL 0 — Tela principal multifuncional: time timer + onda + respiração + ajuste rápido -->
@@ -1192,11 +1212,13 @@ function getBand(hz) {
 // Gesto manual no slider abandona um protocolo de múltiplos estágios
 function abandonProtocolIfManual() {
   if (typeof isMultiStage === 'function' && isMultiStage() && !isRunning) {
+    // sai do protocolo: chip apaga, faixa de duração volta a 1–60'
     activeProtocol = normalizeProtocol({
       freq: currentFreq, noise: currentNoise, binaural: currentBinaural,
       dur: Math.round(sessionDuration / 60), label: '', desc: ''
     });
     rebuildResolved();
+    updateProtocolChip();
   }
 }
 
@@ -1563,6 +1585,14 @@ function toggleSession() {
 function stopSession() {
   isRunning = false;
   tickLogFlush();
+  // Captura o estado do protocolo ANTES de qualquer reset
+  const endedStageIdx = currentStageIdx;
+  const endedStageLabel = (isMultiStage() && resolvedStages[currentStageIdx])
+    ? (resolvedStages[currentStageIdx].label || ('ESTÁGIO ' + (currentStageIdx + 1))) : null;
+  const endedProtoLabel = isMultiStage() ? activeProtocol.label : null;
+  const endedStages = isMultiStage()
+    ? resolvedStages.map(st => ({ freq: st.freq, dur: st.dur, len: st.len, label: st.label })) : null;
+  const endedOffset = freqOffset;
   clearInterval(timerInterval);
   stopFlicker();
   // Restaura volume mestre caso algum estágio tenha aplicado multiplicador
@@ -1581,6 +1611,8 @@ function stopSession() {
   }
   freqOffset = 0;
   currentStageIdx = -1;
+  updateStageMarks();
+  updateProtocolChip();
   try { if (dialBreathRAF) { cancelAnimationFrame(dialBreathRAF); dialBreathRAF = null; } } catch(e) {}
   try { if (_enterGhost) { _enterGhost.remove(); _enterGhost = null; } } catch(e) {}
   document.getElementById('fs-overlay').classList.remove('entering');
@@ -1614,7 +1646,14 @@ function stopSession() {
       freq: currentFreq,
       noise: noiseLabel,
       duration: completedDuration,
-      mode: modeLabel
+      mode: modeLabel,
+      protoLabel: endedProtoLabel,
+      stages: endedStages,
+      offset: endedOffset,
+      elapsed: elapsedSeconds,
+      endStage: endedStageIdx,
+      endStageLabel: endedStageLabel,
+      completed: sessionCompleted
     }), 600);
   }
 }
@@ -1701,6 +1740,21 @@ const PRESETS = {
   sono:       { freq:4,  noise:'brown', binaural:true,  dur:30, flicker:false, label:'SONO',          desc:'4 Hz · Marrom · Binaural · 30min' },
   gamma:      { freq:40, noise:'white', binaural:true,  dur:15, flicker:false, label:'GAMMA',         desc:'40 Hz · Branco · Binaural · 15min' },
   alzheimer:  { freq:40, noise:'white', binaural:true,  dur:20, flicker:true,  flickerColor:'amber', label:'40Hz PESQUISA', desc:'40 Hz · Branco · Flicker âmbar · 20min' },
+
+  // ── PROTOCOLO MULTI-ESTÁGIO ──────────────────────────
+  powernap: {
+    label: 'POWER NAP',
+    desc: '10→5,5→14 Hz · Marrom · 13–30min',
+    noise: 'brown', binaural: true, flicker: false, flickerColor: 'white',
+    dur: 20, minDur: 13, maxDur: 30, endSignal: true,
+    stages: [
+      { freq: 10,  dur: 1, label: 'ANCORAGEM' },
+      { freq: 7,   dur: 3, label: 'DESCIDA' },
+      { freq: 5.5, dur: 2, label: 'APROFUNDAMENTO' },
+      { freq: 5.5, dur: 0, elastic: true, min: 5, label: 'PLATÔ' },
+      { freq: 14,  dur: 2, flicker: true, flickerColor: 'white', vol: 1.4, label: 'DESPERTAR' }
+    ]
+  },
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -1834,6 +1888,8 @@ let resolvedStages = [];
 let freqOffset = 0;
 let currentStageIdx = -1;
 let sessionT0 = 0; // Date.now() do início da sessão — compartilhado entre tick e slider
+let endSignalFired = false;
+let sessionCompleted = false;
 
 function rebuildResolved() {
   resolvedStages = resolveStages(activeProtocol, sessionDuration, infiniteMode);
@@ -1850,6 +1906,102 @@ function syncProtocolToManual() {
 
 function isMultiStage() {
   return !!(activeProtocol && activeProtocol.stages.length > 1);
+}
+
+// ── CHIP DO PROTOCOLO (tela principal) ────────────────
+function updateProtocolChip() {
+  const el = document.getElementById('proto-chip');
+  if (!el) return;
+  if (isMultiStage() && activeProtocol.label) {
+    const lo = activeProtocol.minDur, hi = activeProtocol.maxDur;
+    el.textContent = activeProtocol.label + (lo && hi ? ' · ' + lo + "–" + hi + "'" : '');
+    el.style.display = 'inline-block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// ── RÓTULO DE ESTÁGIO (tela de sessão) ────────────────
+// Em protocolo, o estágio tem prioridade sobre o rótulo de banda.
+function updateStageLabel() {
+  const bandEl = document.getElementById('fs-freq-band');
+  if (!bandEl) return;
+  if (isMultiStage() && currentStageIdx >= 0 && resolvedStages[currentStageIdx]) {
+    const s = resolvedStages[currentStageIdx];
+    let txt = s.label || ('ESTÁGIO ' + (currentStageIdx + 1));
+    if (Math.abs(freqOffset) >= 0.05) {
+      txt += ' · ' + (freqOffset > 0 ? '+' : '') + freqOffset.toFixed(1);
+    }
+    bandEl.textContent = txt;
+  } else {
+    bandEl.textContent = 'HZ · ' + getBand(currentFreq);
+  }
+}
+
+// ── MARCAS DE FRONTEIRA DE ESTÁGIO NO DIAL ────────────
+// Mesma geometria dos ticks (cx=60, cy=60, r 46,5→52).
+function updateStageMarks() {
+  const tg = document.getElementById('tt-ticks');
+  if (!tg) return;
+  tg.querySelectorAll('.stage-mark').forEach(n => n.remove());
+  if (!isMultiStage()) return;
+  const total = totalResolved(resolvedStages);
+  if (!isFinite(total) || total <= 0) return;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  for (let i = 1; i < resolvedStages.length; i++) {
+    const frac = resolvedStages[i].t0 / total;
+    if (!isFinite(frac) || frac <= 0 || frac >= 1) continue;
+    const a = frac * 2 * Math.PI;
+    const ln = document.createElementNS(SVGNS, 'line');
+    ln.setAttribute('x1', (60 + 44 * Math.sin(a)).toFixed(2));
+    ln.setAttribute('y1', (60 - 44 * Math.cos(a)).toFixed(2));
+    ln.setAttribute('x2', (60 + TT_R * Math.sin(a)).toFixed(2));
+    ln.setAttribute('y2', (60 - TT_R * Math.cos(a)).toFixed(2));
+    ln.setAttribute('class', 'stage-mark');
+    ln.setAttribute('stroke', '#39ff6a');
+    ln.setAttribute('stroke-width', '1.4');
+    ln.setAttribute('stroke-linecap', 'round');
+    ln.setAttribute('opacity', '0.75');
+    tg.appendChild(ln);
+  }
+}
+
+// ── SINAL SONORO DE FIM ───────────────────────────────
+// Gerado no AudioContext já aberto — sem asset, sem arquivo.
+// ⚠ iOS em modo silencioso NÃO toca: o app não é despertador confiável.
+let endSignalEnabled = true;
+
+function playEndSignal() {
+  if (!endSignalEnabled) return;
+  if (!audioCtx || audioCtx.state !== 'running') return;
+  try {
+    const t0 = audioCtx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      const st = t0 + i * 0.45;
+      g.gain.setValueAtTime(0, st);
+      g.gain.linearRampToValueAtTime(0.35, st + 0.02);
+      g.gain.setValueAtTime(0.35, st + 0.22);
+      g.gain.linearRampToValueAtTime(0, st + 0.30);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(st); o.stop(st + 0.34);
+    }
+  } catch (e) {}
+}
+
+function setEndSignalPill(el) {
+  document.querySelectorAll('#endsignal-pills .pill').forEach(p => p.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+function toggleEndSignal(on) {
+  endSignalEnabled = !!on;
+  const sub = document.getElementById('endsignal-sub');
+  if (sub) sub.textContent = endSignalEnabled ? 'Ligado' : 'Desligado';
+  try { localStorage.setItem('em_endsignal', endSignalEnabled ? '1' : '0'); } catch (e) {}
 }
 
 // Aplica os parâmetros declarados no estágio (nulo = não mexe)
@@ -1923,17 +2075,6 @@ function tickLogFlush() {
 
 document.addEventListener('visibilitychange', () => { if (isRunning) tickLogFlush(); });
 
-// ── PAINEL TEMPORÁRIO DE VERIFICAÇÃO (remover no arquivo 2) ──
-function dbgTickPanel() {
-  const el = document.getElementById('dbg-panel');
-  if (!el || !tickLog) return;
-  const st = resolvedStages.length ? (currentStageIdx + 1) + '/' + resolvedStages.length : '–';
-  el.innerHTML = 'v2026.07.19b<br>' +
-    'hz ' + fmtHz(currentFreq) + ' · est ' + st + '<br>' +
-    'ticks ' + tickLog.ticks + ' · gapmax ' + tickLog.maxGap + 'ms<br>' +
-    'buracos ' + tickLog.gaps.length;
-}
-
 function showTickReport() {
   let all = [];
   try { all = JSON.parse(localStorage.getItem('em_ticklog') || '[]'); } catch (e) {}
@@ -1960,13 +2101,13 @@ function applyPreset(key) {
   if (!p) return;
   activeProtocol = normalizeProtocol(p);
   activeProtocol.sourceKey = key;
-  // Frequência inicial = primeiro estágio
-  p.freq = (p.freq !== undefined) ? p.freq : activeProtocol.stages[0].freq;
-  currentFreq = p.freq;
-  document.getElementById('freq-slider').value = p.freq;
-  document.getElementById('freq-display').textContent = p.freq;
-  document.getElementById('freq-val').textContent = p.freq + ' Hz';
-  const band = getBand(p.freq);
+  // Frequência inicial = primeiro estágio (sem mutar o objeto PRESETS)
+  const f0 = (p.freq !== undefined) ? p.freq : activeProtocol.stages[0].freq;
+  currentFreq = Math.round(f0);
+  document.getElementById('freq-slider').value = Math.round(f0);
+  document.getElementById('freq-display').textContent = fmtHz(f0);
+  document.getElementById('freq-val').textContent = fmtHz(f0) + ' Hz';
+  const band = getBand(f0);
   document.getElementById('freq-band').textContent = 'HERTZ · ' + band;
   document.querySelectorAll('#freq-presets .pill').forEach(pl => pl.classList.remove('active'));
 
@@ -1986,14 +2127,15 @@ function applyPreset(key) {
       btnInf.style.background='transparent'; btnInf.style.boxShadow=''; }
   }
   currentFlicker = p.flicker || false;
-  lastFiniteDuration = p.dur * 60;
-  sessionDuration = p.dur * 60;
+  const durMin = p.dur || 20;
+  lastFiniteDuration = durMin * 60;
+  sessionDuration = durMin * 60;
   timeRemaining = sessionDuration;
   updateTimerDisplay(timeRemaining);
   updateRing(1);
   document.querySelectorAll('#dur-pills .pill').forEach(pl => pl.classList.remove('active'));
   const durPill = [...document.querySelectorAll('#dur-pills .pill')]
-    .find(pl => pl.textContent.trim() === p.dur + "'");
+    .find(pl => pl.textContent.trim() === durMin + "'");
   if (durPill) durPill.classList.add('active');
 
   // Flicker
@@ -2014,6 +2156,7 @@ function applyPreset(key) {
 
   updateBinauralSub();
   rebuildResolved();
+  updateProtocolChip();
 }
 
 function setNoiseQuiet(type) {
@@ -2253,6 +2396,10 @@ function startSession() {
   rebuildResolved();
   currentStageIdx = -1;
   freqOffset = 0;
+  endSignalFired = false;
+  sessionCompleted = false;
+  updateStageMarks();
+  updateStageLabel();
   tickLogStart();
 
   timerInterval = setInterval(() => {
@@ -2274,9 +2421,9 @@ function startSession() {
       if (si !== currentStageIdx) {
         currentStageIdx = si;
         onStageEnter(resolvedStages[si]);
+        updateStageLabel();
       }
     }
-    dbgTickPanel();
 
     if (infiniteMode) {
       updateTimerDisplay(elapsedSeconds);
@@ -2287,7 +2434,18 @@ function startSession() {
       timeRemaining = Math.max(0, sessionStartRemaining - wallSeconds);
       updateTimerDisplay(timeRemaining);
       updateRing(timeRemaining / sessionDuration, 'remaining');
-      if (timeRemaining <= 0) stopSession();
+      // Sinal sonoro ANTES do stopSession — o áudio ainda está vivo
+      if (!endSignalFired && timeRemaining <= 2 &&
+          activeProtocol && activeProtocol.endSignal) {
+        endSignalFired = true;
+        playEndSignal();
+      }
+      if (timeRemaining <= 0) {
+        sessionCompleted = true;
+        clearInterval(timerInterval); // evita re-entrada durante o atraso do sinal
+        if (endSignalFired) setTimeout(() => { if (isRunning) stopSession(); }, 1500);
+        else stopSession();
+      }
     }
   }, 500); // 500ms para recalcular rapidamente ao voltar do background
 }
@@ -2404,8 +2562,10 @@ function refreshFreqDisplay(hz) {
   const txt = fmtHz(hz);
   const bigEl = document.getElementById('fs-freq-big');
   if (bigEl) bigEl.textContent = txt;
-  const bandEl = document.getElementById('fs-freq-band');
-  if (bandEl) bandEl.textContent = 'HZ · ' + getBand(hz);
+  if (!isMultiStage()) {
+    const bandEl = document.getElementById('fs-freq-band');
+    if (bandEl) bandEl.textContent = 'HZ · ' + getBand(hz);
+  }
   const disp = document.getElementById('freq-display');
   if (disp) disp.textContent = txt;
 }
@@ -2422,6 +2582,7 @@ function applySessionFreq(hz) {
     const eff = freqAtTime(resolvedStages, t, freqOffset);
     applyFreqToAudio(eff);
     refreshFreqDisplay(eff);
+    updateStageLabel();
   } else {
     if (activeProtocol && activeProtocol.stages[0]) activeProtocol.stages[0].freq = hz;
     if (resolvedStages && resolvedStages[0]) resolvedStages[0].freq = hz; // o tick lê a cópia resolvida
@@ -2709,6 +2870,7 @@ function endCustomPress(n) {
       }
       syncFlickIntensity();
       rebuildResolved();
+      updateProtocolChip();
     } else {
       // Slot vazio → salvar
       saveCustomSlot(n);
@@ -2730,6 +2892,9 @@ function cancelCustomPress() {
 
   const DRAG_THRESHOLD = 8; // px mínimos para considerar drag
   const MIN_DUR = 1, MAX_DUR = 60;
+  // Protocolo pode estreitar a faixa (ex.: Power Nap 13–30')
+  const durLo = () => (activeProtocol && activeProtocol.minDur) ? activeProtocol.minDur : MIN_DUR;
+  const durHi = () => (activeProtocol && activeProtocol.maxDur) ? activeProtocol.maxDur : MAX_DUR;
   let pressing = false;
   let isDrag = false;
   let startY = 0;
@@ -2751,7 +2916,7 @@ function cancelCustomPress() {
     if (!isDrag && Math.abs(dy) < DRAG_THRESHOLD) return;
     isDrag = true;
     const delta = Math.round(dy / 8);
-    let newDur = Math.max(MIN_DUR, Math.min(MAX_DUR, startDur + delta));
+    let newDur = Math.max(durLo(), Math.min(durHi(), startDur + delta));
     if (newDur !== getDurMin()) {
       if (infiniteMode) {
         infiniteMode = false;
@@ -2814,6 +2979,24 @@ loadCustomSlots();
 loadLastState();
 syncFlickIntensity();
 rebuildResolved();
+updateProtocolChip();
+(function initEndSignal() {
+  try {
+    const saved = localStorage.getItem('em_endsignal');
+    if (saved !== null) endSignalEnabled = (saved === '1');
+  } catch (e) {}
+  const sub = document.getElementById('endsignal-sub');
+  if (sub) sub.textContent = endSignalEnabled ? 'Ligado' : 'Desligado';
+  const pills = document.querySelectorAll('#endsignal-pills .pill');
+  if (pills.length === 2) {
+    pills[0].classList.toggle('active', endSignalEnabled);
+    pills[1].classList.toggle('active', !endSignalEnabled);
+  }
+  if (isIOS) {
+    const w = document.getElementById('endsignal-warn');
+    if (w) w.style.display = 'block';
+  }
+})();
 
 function saveState() {
   const state = {
@@ -2913,6 +3096,7 @@ function loadLastState() {
 
   syncFlickIntensity();
   rebuildResolved();
+  updateProtocolChip();
 }
 
 // ── FEEDBACK & HISTÓRICO ──────────────────────────────
@@ -2935,8 +3119,11 @@ function clearChecks() {
 
 function openFeedback(sessionInfo) {
   lastSession = sessionInfo;
-  document.getElementById('fb-session-info').textContent =
-    `${sessionInfo.freq} Hz · ${sessionInfo.noise} · ${sessionInfo.duration}min · ${sessionInfo.mode}`;
+  const isProto = sessionInfo.stages && sessionInfo.stages.length > 1;
+  document.getElementById('fb-session-info').textContent = isProto
+    ? `${sessionInfo.protoLabel} · ${sessionInfo.duration}min · ` +
+      (sessionInfo.completed ? 'completo' : 'encerrado em ' + sessionInfo.endStageLabel)
+    : `${sessionInfo.freq} Hz · ${sessionInfo.noise} · ${sessionInfo.duration}min · ${sessionInfo.mode}`;
   clearChecks();
   document.getElementById('feedback-modal').classList.add('active');
 }
@@ -2945,13 +3132,36 @@ function closeFeedback() {
   document.getElementById('feedback-modal').classList.remove('active');
 }
 
+// Linha compacta legível: "10→7 (3') · 5.5 (12') · 14 (2')"
+function formatProtocolLine(stages) {
+  if (!stages || !stages.length) return '';
+  return stages.map((s, i) => {
+    const mins = (s.len !== undefined && isFinite(s.len)) ? (s.len / 60) : (s.dur / 60);
+    const d = mins >= 1 ? Math.round(mins) + "'" : Math.round(mins * 60) + 's';
+    const prev = i > 0 ? stages[i - 1].freq : null;
+    const head = (prev !== null && Math.abs(prev - s.freq) > 0.01)
+      ? fmtHz(prev) + '→' + fmtHz(s.freq) : fmtHz(s.freq);
+    return head + ' (' + d + ')';
+  }).join(' · ');
+}
+
 function buildEntry() {
+  const isProto = lastSession.stages && lastSession.stages.length > 1;
   return {
     date: new Date().toLocaleString('pt-BR'),
     freq: lastSession.freq,
     noise: lastSession.noise,
     duration: lastSession.duration,
     mode: lastSession.mode,
+    // ── protocolo (ausente em entradas antigas — leitura defensiva) ──
+    protocol: isProto ? (lastSession.protoLabel || 'PROTOCOLO') : null,
+    stages: isProto ? lastSession.stages : null,
+    protoLine: isProto ? formatProtocolLine(lastSession.stages) : null,
+    offset: lastSession.offset || 0,
+    elapsed: lastSession.elapsed || 0,
+    endStage: (lastSession.endStage !== undefined) ? lastSession.endStage : null,
+    endStageLabel: lastSession.endStageLabel || null,
+    completed: !!lastSession.completed,
     feeling: getSelected('fb-feeling'),
     effects: getSelected('fb-effects'),
     adverse: getSelected('fb-adverse'),
@@ -2985,12 +3195,21 @@ function sendAllHistory() {
 }
 
 function formatEntryForEmail(entries) {
-  return entries.map(e =>
-    `Data: ${e.date}\nFrequência: ${e.freq} Hz | Ruído: ${e.noise} | Duração: ${e.duration}min | Modo: ${e.mode}\n` +
-    `Sensação: ${e.feeling.join(', ') || '—'}\n` +
-    `Efeitos: ${e.effects.join(', ') || '—'}\n` +
-    `Adversos: ${e.adverse.join(', ') || '—'}\n`
-  ).join('\n─────────────\n');
+  return entries.map(e => {
+    let head;
+    if (e.protocol) {
+      head = `Protocolo: ${e.protocol}\nEstágios: ${e.protoLine || '—'}\n` +
+        `Ruído: ${e.noise} | Duração: ${e.duration}min | Modo: ${e.mode}\n` +
+        `Desfecho: ${e.completed ? 'completo' : 'encerrado em ' + (e.endStageLabel || '?')}` +
+        (e.offset ? ` | Ajuste: ${e.offset > 0 ? '+' : ''}${e.offset.toFixed(1)} Hz` : '') + '\n';
+    } else {
+      head = `Frequência: ${e.freq} Hz | Ruído: ${e.noise} | Duração: ${e.duration}min | Modo: ${e.mode}\n`;
+    }
+    return `Data: ${e.date}\n` + head +
+      `Sensação: ${(e.feeling || []).join(', ') || '—'}\n` +
+      `Efeitos: ${(e.effects || []).join(', ') || '—'}\n` +
+      `Adversos: ${(e.adverse || []).join(', ') || '—'}\n`;
+  }).join('\n─────────────\n');
 }
 
 function openHistory() {
@@ -3002,11 +3221,14 @@ function openHistory() {
     list.innerHTML = history.map(e => `
       <div class="history-entry">
         <div class="history-entry-header">
-          <span class="history-freq">${e.freq} Hz</span>
+          <span class="history-freq">${e.protocol ? e.protocol : e.freq + ' Hz'}</span>
           <span class="history-date">${e.date}</span>
         </div>
         <div style="font-size:11px;color:var(--dim);margin-bottom:6px;">
           ${e.noise} · ${e.duration}min · ${e.mode}
+          ${e.protocol ? `<br><span style="color:var(--accent);opacity:0.8">${e.protoLine || ''}</span>
+            <br>${e.completed ? '✓ completo' : '⤺ encerrado em ' + (e.endStageLabel || '?')}
+            ${e.offset ? ' · ajuste ' + (e.offset > 0 ? '+' : '') + e.offset.toFixed(1) + ' Hz' : ''}` : ''}
         </div>
         <div class="history-tags">
           ${e.feeling.map(t => `<span class="history-tag positive">${t}</span>`).join('')}
