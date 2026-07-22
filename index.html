@@ -1024,7 +1024,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.22b
+    v2026.07.22c
   </div>
 
   <div class="warning">
@@ -3406,7 +3406,7 @@ function renderSessionGraph(entry, opts) {
   const o = opts || {};
   const W = o.w || 320, H = o.h || 150, compact = !!o.compact;
   const padL = compact ? 4 : 26, padR = compact ? 4 : 8;
-  const padT = 8, padB = compact ? 6 : 18;
+  const padT = 8, padB = compact ? 6 : 26;
   const plotW = W - padL - padR, plotH = H - padT - padB;
 
   const offAt = offsetAtFactory(entry.events);
@@ -3421,6 +3421,33 @@ function renderSessionGraph(entry, opts) {
   const M = buildXMap(res, plotW);
   const elapsed = entry.elapsed || M.total;
   let svg = '';
+  const X = (t) => padL + M.xOf(t);   // único mapeamento t → x, já com a margem
+
+  // ── Eixo X: tempo. Os rótulos saem das FRONTEIRAS de estágio, não de
+  // divisões uniformes — com quebra de eixo, divisão uniforme mentiria.
+  function fmtMin(sec) {
+    const m = sec / 60;
+    if (m >= 60) {
+      const h = Math.floor(m / 60), r = Math.round(m % 60);
+      return r ? h + 'h' + String(r).padStart(2, '0') : h + 'h';
+    }
+    return (m >= 10 ? Math.round(m) : Math.round(m * 10) / 10) + "'";
+  }
+  if (!compact) {
+    const yBase = padT + plotH;
+    svg += `<line x1="${padL}" y1="${yBase}" x2="${padL + plotW}" y2="${yBase}" stroke="#1a6630" stroke-width="0.8"/>`;
+    // marca 0, cada fronteira e o fim — suprimindo as que ficariam coladas
+    const marcas = [0].concat(res.slice(1).map(st => st.t0), [M.total]);
+    let ultimoX = -99;
+    marcas.forEach((t, k) => {
+      const x = X(t);
+      if (x - ultimoX < 26) return;      // evita rótulos sobrepostos
+      ultimoX = x;
+      svg += `<line x1="${x.toFixed(1)}" y1="${yBase}" x2="${x.toFixed(1)}" y2="${yBase + 3}" stroke="#1a6630" stroke-width="0.8"/>`;
+      const anchor = k === 0 ? 'start' : (t >= M.total ? 'end' : 'middle');
+      svg += `<text x="${x.toFixed(1)}" y="${yBase + 12}" fill="#6aaa6a" font-size="7.5" text-anchor="${anchor}" font-family="'Share Tech Mono',monospace">${fmtMin(t)}</text>`;
+    });
+  }
 
   // Grade discreta + rótulos do eixo Y (só na versão completa)
   if (!compact) {
@@ -3441,7 +3468,7 @@ function renderSessionGraph(entry, opts) {
     for (let k = 0; k <= N; k++) {
       const t = st.t0 + (st.len * k) / N;
       const hz = freqAtTime(res, Math.min(t, st.t1 - 0.001), offAt(t));
-      pts.push({ t, x: M.xOf(t), y: yOf(hz) });
+      pts.push({ t, x: X(t), y: yOf(hz) });
     }
     // recuo nas pontas = entalhe
     const x0 = pts[0].x + (i > 0 ? NOTCH_PX : 0);
@@ -3459,7 +3486,7 @@ function renderSessionGraph(entry, opts) {
   // Símbolo de quebra de eixo
   M.segs.forEach(sg => {
     if (!sg.broken) return;
-    const xc = (sg.x0 + sg.x1) / 2;
+    const xc = padL + (sg.x0 + sg.x1) / 2;
     [-3, 3].forEach(d => {
       svg += `<path d="M ${(xc + d).toFixed(1)} ${padT + plotH} l 3 -6" stroke="#6aaa6a" stroke-width="1" fill="none" opacity="0.8"/>`;
     });
@@ -3467,7 +3494,7 @@ function renderSessionGraph(entry, opts) {
 
   // Eventos de offset
   (entry.events || []).forEach(e => {
-    const x = M.xOf(e.t), hz = freqAtTime(res, e.t, e.off);
+    const x = X(e.t), hz = freqAtTime(res, e.t, e.off);
     const y = yOf(hz);
     svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${compact ? 1.8 : 2.4}" fill="#040a04" stroke="#e8f4e8" stroke-width="1"/>`;
     if (!compact) {
@@ -3477,7 +3504,7 @@ function renderSessionGraph(entry, opts) {
 
   // Encerramento precoce
   if (!entry.completed && elapsed < M.total) {
-    const x = M.xOf(elapsed);
+    const x = X(elapsed);
     svg += `<line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${padT + plotH}" stroke="#ff6b35" stroke-width="1" stroke-dasharray="2 2" opacity="0.85"/>`;
   }
 
@@ -3490,6 +3517,7 @@ function toggleHistoryGraph(i) {
 }
 
 function openHistory() {
+  const history = JSON.parse(localStorage.getItem('bs_history') || '[]');
   const list = document.getElementById('history-list');
   if (!history.length) {
     list.innerHTML = '<div class="history-empty">Nenhuma sessão registrada ainda.</div>';
