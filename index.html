@@ -1000,7 +1000,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.19a
+    v2026.07.19b
   </div>
 
   <div class="warning">
@@ -1015,7 +1015,7 @@
   <div id="dbg-panel" style="position:fixed;left:8px;bottom:8px;z-index:350;
     font-family:'Share Tech Mono',monospace;font-size:9px;line-height:1.5;
     color:#6aaa6a;opacity:0.55;pointer-events:none;text-align:left;
-    background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:4px;">v2026.07.19a</div>
+    background:rgba(0,0,0,0.35);padding:4px 6px;border-radius:4px;">v2026.07.19b</div>
  <div id="fs-track">
 
   <!-- PAINEL 0 — Tela principal multifuncional: time timer + onda + respiração + ajuste rápido -->
@@ -1734,10 +1734,10 @@ function normalizeProtocol(p) {
         elastic: !!s.elastic,
         step: !!s.step,
         min: (s.min || 0) * 60,
-        flicker: (s.flicker === undefined ? null : !!s.flicker),
+        flicker: (s.flicker === undefined || s.flicker === null) ? null : !!s.flicker,
         flickerColor: s.flickerColor || null,
-        vol: (s.vol === undefined ? 1 : Number(s.vol)),
-        am: (s.am === undefined ? null : Number(s.am)),
+        vol: (s.vol === undefined || s.vol === null) ? 1 : Number(s.vol),
+        am: (s.am === undefined || s.am === null) ? null : Number(s.am),
         label: s.label || ''
       }))
     };
@@ -1855,6 +1855,9 @@ function isMultiStage() {
 // Aplica os parâmetros declarados no estágio (nulo = não mexe)
 function onStageEnter(s) {
   if (!s) return;
+  // Protocolo de estágio único não tem parâmetros próprios a aplicar —
+  // a UI (applyPreset, sliders, toggles) já é a fonte de verdade.
+  if (!isMultiStage()) return;
   if (s.flicker !== null && s.flicker !== undefined) {
     if (s.flickerColor) currentFlickerColor = s.flickerColor;
     if (s.flicker !== currentFlicker) {
@@ -1925,7 +1928,7 @@ function dbgTickPanel() {
   const el = document.getElementById('dbg-panel');
   if (!el || !tickLog) return;
   const st = resolvedStages.length ? (currentStageIdx + 1) + '/' + resolvedStages.length : '–';
-  el.innerHTML = 'v2026.07.19a<br>' +
+  el.innerHTML = 'v2026.07.19b<br>' +
     'hz ' + fmtHz(currentFreq) + ' · est ' + st + '<br>' +
     'ticks ' + tickLog.ticks + ' · gapmax ' + tickLog.maxGap + 'ms<br>' +
     'buracos ' + tickLog.gaps.length;
