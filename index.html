@@ -1024,7 +1024,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.20a
+    v2026.07.22a
   </div>
 
   <div class="warning">
@@ -1627,7 +1627,10 @@ function stopSession() {
   const ra2 = document.getElementById('ring-action'); if(ra2) { ra2.textContent = 'INICIAR'; ra2.style.color='var(--accent)'; }
   const rh2 = document.getElementById('ring-dur-hint'); if(rh2) rh2.style.visibility='visible';
 
-  const completedDuration = Math.round((sessionDuration - timeRemaining) / 60) || Math.round(sessionDuration / 60);
+  // Duração REAL decorrida. Antes usava (sessionDuration - timeRemaining), que
+  // em modo infinito dá zero — timeRemaining não é atualizado nesse ramo — e caía
+  // no fallback da duração nominal. Uma sessão de 368' registrava 13'.
+  const completedDuration = Math.max(1, Math.round(elapsedSeconds / 60));
   const noiseLabel = {white:'Branco',pink:'Rosa',brown:'Marrom'}[currentNoise] || currentNoise;
   const modeLabel = currentBinaural ? 'AM+Binaural' : 'AM';
 
@@ -1938,31 +1941,90 @@ function updateStageLabel() {
   }
 }
 
-// ── MARCAS DE FRONTEIRA DE ESTÁGIO NO DIAL ────────────
-// Mesma geometria dos ticks (cx=60, cy=60, r 46,5→52).
+// ── ARCO DE PROTOCOLO NO DIAL ─────────────────────────
+// A pista dos ticks (r 46,5–52) passa a exibir a CURVA do protocolo:
+// ~150 segmentos coloridos pela frequência daquele instante, usando os
+// mesmos stops do slider. Nas fronteiras de estágio o arco é INTERROMPIDO
+// — o entalhe é uma falha na faixa, não um traço a mais, ecoando os
+// semicírculos interrompidos do logo.
+
+const FREQ_STOPS = [
+  [0.00, [0x00, 0x44, 0xff]],
+  [0.15, [0x00, 0xaa, 0xff]],
+  [0.35, [0x00, 0xff, 0xaa]],
+  [0.50, [0x39, 0xff, 0x6a]],
+  [0.65, [0xaa, 0xff, 0x00]],
+  [0.80, [0xff, 0xdd, 0x00]],
+  [1.00, [0xff, 0x66, 0x00]]
+];
+
+function freqToColor(hz) {
+  const t = Math.min(1, Math.max(0, (hz - 1) / 39)); // slider vai de 1 a 40
+  let a = FREQ_STOPS[0], b = FREQ_STOPS[FREQ_STOPS.length - 1];
+  for (let i = 0; i < FREQ_STOPS.length - 1; i++) {
+    if (t >= FREQ_STOPS[i][0] && t <= FREQ_STOPS[i + 1][0]) {
+      a = FREQ_STOPS[i]; b = FREQ_STOPS[i + 1]; break;
+    }
+  }
+  const span = (b[0] - a[0]) || 1;
+  const k = (t - a[0]) / span;
+  const c = [0, 1, 2].map(i => Math.round(a[1][i] + (b[1][i] - a[1][i]) * k));
+  return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+}
+
+const ARC_R = 49.5;        // centro da pista dos ticks (46,5–52)
+const ARC_W = 3.4;         // espessura da faixa
+const ARC_SEGMENTS = 150;  // resolução angular (2,4° por segmento)
+const ARC_NOTCH_DEG = 3.2; // largura do entalhe em cada fronteira
+
+function arcPoint(r, ang) {
+  return [(60 + r * Math.sin(ang)).toFixed(2), (60 - r * Math.cos(ang)).toFixed(2)];
+}
+
 function updateStageMarks() {
   const tg = document.getElementById('tt-ticks');
   if (!tg) return;
-  tg.querySelectorAll('.stage-mark').forEach(n => n.remove());
-  if (!isMultiStage()) return;
+  tg.querySelectorAll('.stage-mark, .proto-arc').forEach(n => n.remove());
+
+  // 12 ticks → 4 (quartos) enquanto houver protocolo carregado
+  const proto = isMultiStage();
+  tg.querySelectorAll('.tt-tick').forEach((t, i) => {
+    t.style.display = (proto && (i % 3 !== 0)) ? 'none' : '';
+    t.style.opacity = proto ? '0.35' : '';
+  });
+  if (!proto) return;
+
   const total = totalResolved(resolvedStages);
   if (!isFinite(total) || total <= 0) return;
-  const SVGNS = 'http://www.w3.org/2000/svg';
+
+  // fronteiras em graus (exclui 0 e 360)
+  const notches = [];
   for (let i = 1; i < resolvedStages.length; i++) {
-    const frac = resolvedStages[i].t0 / total;
-    if (!isFinite(frac) || frac <= 0 || frac >= 1) continue;
-    const a = frac * 2 * Math.PI;
-    const ln = document.createElementNS(SVGNS, 'line');
-    ln.setAttribute('x1', (60 + 44 * Math.sin(a)).toFixed(2));
-    ln.setAttribute('y1', (60 - 44 * Math.cos(a)).toFixed(2));
-    ln.setAttribute('x2', (60 + TT_R * Math.sin(a)).toFixed(2));
-    ln.setAttribute('y2', (60 - TT_R * Math.cos(a)).toFixed(2));
-    ln.setAttribute('class', 'stage-mark');
-    ln.setAttribute('stroke', '#39ff6a');
-    ln.setAttribute('stroke-width', '1.4');
-    ln.setAttribute('stroke-linecap', 'round');
-    ln.setAttribute('opacity', '0.75');
-    tg.appendChild(ln);
+    const f = resolvedStages[i].t0 / total;
+    if (isFinite(f) && f > 0 && f < 1) notches.push(f * 360);
+  }
+
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const step = 360 / ARC_SEGMENTS;
+  for (let i = 0; i < ARC_SEGMENTS; i++) {
+    const d0 = i * step, d1 = d0 + step;
+    const mid = (d0 + d1) / 2;
+    // entalhe: pula o segmento se ele cai sobre uma fronteira
+    if (notches.some(n => Math.abs(((mid - n + 540) % 360) - 180) > 180 - ARC_NOTCH_DEG)) continue;
+
+    const t = (mid / 360) * total;
+    const hz = freqAtTime(resolvedStages, t, 0);
+    const a0 = d0 * Math.PI / 180, a1 = d1 * Math.PI / 180;
+    const p0 = arcPoint(ARC_R, a0), p1 = arcPoint(ARC_R, a1);
+    const path = document.createElementNS(SVGNS, 'path');
+    path.setAttribute('d', 'M ' + p0[0] + ' ' + p0[1] + ' A ' + ARC_R + ' ' + ARC_R + ' 0 0 1 ' + p1[0] + ' ' + p1[1]);
+    path.setAttribute('stroke', freqToColor(hz));
+    path.setAttribute('stroke-width', ARC_W);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke-linecap', 'butt');
+    path.setAttribute('opacity', '0.9');
+    path.setAttribute('class', 'proto-arc');
+    tg.appendChild(path);
   }
 }
 
@@ -2568,6 +2630,8 @@ function refreshFreqDisplay(hz) {
   }
   const disp = document.getElementById('freq-display');
   if (disp) disp.textContent = txt;
+  const chip = document.getElementById('fsm-freq-val');
+  if (chip) chip.textContent = txt + ' Hz';
 }
 
 // Caminho de INTERAÇÃO do usuário: arredonda, mexe no slider e no DOM completo.
