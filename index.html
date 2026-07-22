@@ -1024,7 +1024,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.22c
+    v2026.07.22d
   </div>
 
   <div class="warning">
@@ -1590,8 +1590,18 @@ function stopSession() {
   const endedStageLabel = (isMultiStage() && resolvedStages[currentStageIdx])
     ? (resolvedStages[currentStageIdx].label || ('ESTÁGIO ' + (currentStageIdx + 1))) : null;
   const endedProtoLabel = isMultiStage() ? activeProtocol.label : null;
-  const endedStages = isMultiStage()
+  let endedStages = isMultiStage()
     ? resolvedStages.map(st => ({ freq: st.freq, dur: st.dur, len: st.len, label: st.label })) : null;
+  // Estágios que nunca dispararam (modo infinito trunca após o elástico) entram
+  // no registro para o gráfico desenhá-los como fantasma — o que estava
+  // planejado e não ocorreu.
+  if (endedStages && activeProtocol.stages.length > resolvedStages.length) {
+    for (let i = resolvedStages.length; i < activeProtocol.stages.length; i++) {
+      const st = activeProtocol.stages[i];
+      endedStages.push({ freq: st.freq, dur: st.dur,
+                         len: st.elastic ? (st.min || 0) : st.dur, label: st.label });
+    }
+  }
   const endedOffset = freqOffset;
   if (offsetPending) { clearTimeout(offsetPending); offsetPending = null; }
   const endedEvents = offsetEvents.slice();
@@ -1673,6 +1683,8 @@ updateBinauralSub();
   <div class="modal-box">
     <div class="modal-title">Sessão concluída</div>
     <div class="modal-sub" id="fb-session-info"></div>
+    <div id="fb-graph" style="display:none;margin:8px 0 4px;padding:4px 0;
+      border-top:1px solid var(--accent-dim);border-bottom:1px solid var(--accent-dim);"></div>
 
     <div class="modal-section">
       <span class="modal-label">Como você se sentiu?</span>
@@ -3237,6 +3249,16 @@ function openFeedback(sessionInfo) {
     ? `${sessionInfo.protoLabel} · ${sessionInfo.duration}min · ` +
       (sessionInfo.completed ? 'completo' : 'encerrado em ' + sessionInfo.endStageLabel)
     : `${sessionInfo.freq} Hz · ${sessionInfo.noise} · ${sessionInfo.duration}min · ${sessionInfo.mode}`;
+  const g = document.getElementById('fb-graph');
+  if (g) {
+    if (isProto) {
+      g.innerHTML = renderSessionGraph(sessionInfo, { w: 300, h: 80, compact: true });
+      g.style.display = 'block';
+    } else {
+      g.innerHTML = '';
+      g.style.display = 'none';
+    }
+  }
   clearChecks();
   document.getElementById('feedback-modal').classList.add('active');
 }
