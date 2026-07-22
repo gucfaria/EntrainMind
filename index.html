@@ -1024,7 +1024,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.22a
+    v2026.07.22b
   </div>
 
   <div class="warning">
@@ -1593,6 +1593,8 @@ function stopSession() {
   const endedStages = isMultiStage()
     ? resolvedStages.map(st => ({ freq: st.freq, dur: st.dur, len: st.len, label: st.label })) : null;
   const endedOffset = freqOffset;
+  if (offsetPending) { clearTimeout(offsetPending); offsetPending = null; }
+  const endedEvents = offsetEvents.slice();
   clearInterval(timerInterval);
   stopFlicker();
   // Restaura volume mestre caso algum estágio tenha aplicado multiplicador
@@ -1656,7 +1658,8 @@ function stopSession() {
       elapsed: elapsedSeconds,
       endStage: endedStageIdx,
       endStageLabel: endedStageLabel,
-      completed: sessionCompleted
+      completed: sessionCompleted,
+      events: endedEvents
     }), 600);
   }
 }
@@ -1972,10 +1975,13 @@ function freqToColor(hz) {
   return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
 }
 
-const ARC_R = 49.5;        // centro da pista dos ticks (46,5–52)
-const ARC_W = 3.4;         // espessura da faixa
+// ── Ajuste fino do arco (trocar aqui e recarregar) ──
+const ARC_R = 49.5;        // raio central da faixa
+const ARC_W = 6.5;         // espessura — a 6,5 cobre a pista inteira dos ticks
 const ARC_SEGMENTS = 150;  // resolução angular (2,4° por segmento)
-const ARC_NOTCH_DEG = 3.2; // largura do entalhe em cada fronteira
+const ARC_NOTCH_DEG = 3.6; // largura do entalhe em cada fronteira
+const ARC_OP_AHEAD = 0.95; // opacidade do trecho ainda por vir
+const ARC_OP_PAST = 0.24;  // opacidade do trecho já percorrido
 
 function arcPoint(r, ang) {
   return [(60 + r * Math.sin(ang)).toFixed(2), (60 - r * Math.cos(ang)).toFixed(2)];
@@ -1986,12 +1992,12 @@ function updateStageMarks() {
   if (!tg) return;
   tg.querySelectorAll('.stage-mark, .proto-arc').forEach(n => n.remove());
 
-  // 12 ticks → 4 (quartos) enquanto houver protocolo carregado
+  // Com ARC_W = 6,5 o arco ocupa toda a pista dos ticks; exibi-los por baixo
+  // só produz sujeira. Durante protocolo eles saem inteiros.
   const proto = isMultiStage();
-  tg.querySelectorAll('.tt-tick').forEach((t, i) => {
-    t.style.display = (proto && (i % 3 !== 0)) ? 'none' : '';
-    t.style.opacity = proto ? '0.35' : '';
-  });
+  tg.querySelectorAll('.tt-tick').forEach(t => { t.style.display = proto ? 'none' : ''; });
+  arcSegments = [];
+  arcFadeIdx = -1;
   if (!proto) return;
 
   const total = totalResolved(resolvedStages);
@@ -2009,8 +2015,9 @@ function updateStageMarks() {
   for (let i = 0; i < ARC_SEGMENTS; i++) {
     const d0 = i * step, d1 = d0 + step;
     const mid = (d0 + d1) / 2;
-    // entalhe: pula o segmento se ele cai sobre uma fronteira
-    if (notches.some(n => Math.abs(((mid - n + 540) % 360) - 180) > 180 - ARC_NOTCH_DEG)) continue;
+    // entalhe: pula o segmento se ele cai SOBRE uma fronteira
+    // (a expressão dá a diferença angular com sinal, em [-180,180))
+    if (notches.some(n => Math.abs(((mid - n + 540) % 360) - 180) < ARC_NOTCH_DEG / 2)) continue;
 
     const t = (mid / 360) * total;
     const hz = freqAtTime(resolvedStages, t, 0);
@@ -2022,9 +2029,25 @@ function updateStageMarks() {
     path.setAttribute('stroke-width', ARC_W);
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke-linecap', 'butt');
-    path.setAttribute('opacity', '0.9');
+    path.setAttribute('opacity', ARC_OP_AHEAD);
     path.setAttribute('class', 'proto-arc');
     tg.appendChild(path);
+    arcSegments.push({ el: path, deg: mid });
+  }
+}
+
+// ── FADE DO TRECHO PERCORRIDO ─────────────────────────
+// O arco mostra o que VEM; o que passou apaga. Atualização incremental:
+// o cursor só avança, então por tick mudam zero ou um punhado de segmentos.
+let arcSegments = [];
+let arcFadeIdx = -1;
+
+function updateArcFade(fraction) {
+  if (!arcSegments.length) return;
+  const deg = Math.max(0, Math.min(1, fraction)) * 360;
+  while (arcFadeIdx + 1 < arcSegments.length && arcSegments[arcFadeIdx + 1].deg <= deg) {
+    arcFadeIdx++;
+    arcSegments[arcFadeIdx].el.setAttribute('opacity', ARC_OP_PAST);
   }
 }
 
@@ -2460,6 +2483,7 @@ function startSession() {
   freqOffset = 0;
   endSignalFired = false;
   sessionCompleted = false;
+  resetOffsetEvents();
   updateStageMarks();
   updateStageLabel();
   tickLogStart();
@@ -2479,6 +2503,8 @@ function startSession() {
         applyFreqToAudio(target);
         refreshFreqDisplay(target);
       }
+      const totalSec = totalResolved(resolvedStages);
+      if (isFinite(totalSec) && totalSec > 0) updateArcFade(t / totalSec);
       const si = stageIndexAtTime(resolvedStages, t);
       if (si !== currentStageIdx) {
         currentStageIdx = si;
@@ -2635,6 +2661,28 @@ function refreshFreqDisplay(hz) {
 }
 
 // Caminho de INTERAÇÃO do usuário: arredonda, mexe no slider e no DOM completo.
+// ── EVENTOS DE OFFSET ─────────────────────────────────
+// Só o que a fórmula não sabe. Consolidado: o slider dispara 'input' dezenas
+// de vezes por arraste, então só grava depois de ~1s estável. Teto de 50.
+let offsetEvents = [];
+let offsetPending = null;
+
+function resetOffsetEvents() {
+  offsetEvents = [];
+  if (offsetPending) { clearTimeout(offsetPending); offsetPending = null; }
+}
+
+function noteOffsetChange(t, off) {
+  if (offsetPending) clearTimeout(offsetPending);
+  offsetPending = setTimeout(() => {
+    offsetPending = null;
+    if (offsetEvents.length >= 50) return;
+    const last = offsetEvents[offsetEvents.length - 1];
+    if (last && Math.abs(last.off - off) < 0.05) return; // não mudou de fato
+    offsetEvents.push({ t: Math.round(t), off: Math.round(off * 10) / 10 });
+  }, 1000);
+}
+
 // Ajuste manual de frequência DURANTE a sessão.
 //  - estágio único: escreve na freq do próprio estágio (faixa cheia 1–40)
 //  - multi-estágio: define offset persistente, clamp ±3 Hz
@@ -2643,6 +2691,7 @@ function applySessionFreq(hz) {
     const t = (Date.now() - sessionT0) / 1000;
     const baseline = freqAtTime(resolvedStages, t, 0);
     freqOffset = Math.max(-3, Math.min(3, hz - baseline));
+    noteOffsetChange(t, freqOffset);
     const eff = freqAtTime(resolvedStages, t, freqOffset);
     applyFreqToAudio(eff);
     refreshFreqDisplay(eff);
@@ -3226,6 +3275,7 @@ function buildEntry() {
     endStage: (lastSession.endStage !== undefined) ? lastSession.endStage : null,
     endStageLabel: lastSession.endStageLabel || null,
     completed: !!lastSession.completed,
+    events: isProto ? (lastSession.events || []) : null,
     feeling: getSelected('fb-feeling'),
     effects: getSelected('fb-effects'),
     adverse: getSelected('fb-adverse'),
@@ -3276,14 +3326,176 @@ function formatEntryForEmail(entries) {
   }).join('\n─────────────\n');
 }
 
+// ═══════════════════════════════════════════════════════════
+//  GRÁFICO DE SESSÃO — mesma curva do arco, em geometria linear
+// ═══════════════════════════════════════════════════════════
+
+// Reconstrói os estágios de uma entrada de histórico com t0/t1 absolutos.
+// `len` pode vir null (Infinity serializado) em sessão infinita.
+function entryStages(entry) {
+  if (!entry.stages || entry.stages.length < 2) return null;
+  const cap = entry.elapsed || 0;
+  const out = []; let t = 0;
+  for (const st of entry.stages) {
+    let len = st.len;
+    if (len === null || len === undefined || !isFinite(len)) {
+      len = Math.max(0, cap - t); // elástico infinito: vai até onde a sessão foi
+    }
+    out.push({ freq: st.freq, dur: st.dur || 0, len: len, label: st.label || '',
+               t0: t, t1: t + len, step: false });
+    t += len;
+  }
+  return out;
+}
+
+// Offset como função escada, a partir dos eventos gravados
+function offsetAtFactory(events) {
+  if (!events || !events.length) return () => 0;
+  const ev = events.slice().sort((a, b) => a.t - b.t);
+  return (t) => {
+    let v = 0;
+    for (const e of ev) { if (e.t <= t) v = e.off; else break; }
+    return v;
+  };
+}
+
+// Mapeamento X com quebra de eixo. Comprime APENAS estágio longo E constante
+// (platô do Power Nap infinito). Protocolo cíclico nunca satisfaz as duas.
+function buildXMap(res, plotW) {
+  const total = res[res.length - 1].t1 || 1;
+  // Candidato a compressão: estágio de frequência constante (repete o anterior).
+  // Protocolo cíclico nunca gera candidato — a frequência muda a cada estágio.
+  const cand = res.map((st, i) => i > 0 && Math.abs(st.freq - res[i - 1].freq) < 0.01);
+  const sumOther = res.reduce((a, st, i) => a + (cand[i] ? 0 : st.len), 0);
+
+  // Só comprime se, sem comprimir, os demais estágios ficariam ilegíveis.
+  const MIN_LEGIVEL = 60; // px
+  const comprimir = (sumOther / total) * plotW < MIN_LEGIVEL && sumOther > 0;
+  const nCand = cand.filter(Boolean).length;
+  // Largura comprimida é proporcional AOS OUTROS, não ao total.
+  const useCand = nCand ? (sumOther * 0.35) / nCand : 0;
+
+  const eff = res.map((st, i) => (comprimir && cand[i])
+    ? { use: useCand, broken: true }
+    : { use: st.len, broken: false });
+
+  const sumUse = eff.reduce((a, b) => a + b.use, 0) || 1;
+  let x = 0;
+  const segs = eff.map((e, i) => {
+    const w = (e.use / sumUse) * plotW;
+    const seg = { t0: res[i].t0, t1: res[i].t1, x0: x, x1: x + w, broken: e.broken };
+    x += w; return seg;
+  });
+  const xOf = (t) => {
+    for (const sg of segs) {
+      if (t <= sg.t1 || sg === segs[segs.length - 1]) {
+        const span = (sg.t1 - sg.t0) || 1;
+        const k = Math.max(0, Math.min(1, (t - sg.t0) / span));
+        return sg.x0 + (sg.x1 - sg.x0) * k;
+      }
+    }
+    return plotW;
+  };
+  return { xOf, segs, total };
+}
+
+// Devolve SVG. opts: {w, h, compact}
+function renderSessionGraph(entry, opts) {
+  const res = entryStages(entry);
+  if (!res) return '';
+  const o = opts || {};
+  const W = o.w || 320, H = o.h || 150, compact = !!o.compact;
+  const padL = compact ? 4 : 26, padR = compact ? 4 : 8;
+  const padT = 8, padB = compact ? 6 : 18;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const offAt = offsetAtFactory(entry.events);
+  const freqs = res.map(s => s.freq);
+  const evOffs = (entry.events || []).map(e => e.off);
+  const extra = evOffs.length ? Math.max(...evOffs.map(Math.abs)) : 0;
+  let lo = Math.min(...freqs) - extra, hi = Math.max(...freqs) + extra;
+  const pad = Math.max(0.6, (hi - lo) * 0.18);
+  lo = Math.max(0.5, lo - pad); hi = hi + pad;
+  const yOf = (hz) => padT + plotH * (1 - (hz - lo) / ((hi - lo) || 1));
+
+  const M = buildXMap(res, plotW);
+  const elapsed = entry.elapsed || M.total;
+  let svg = '';
+
+  // Grade discreta + rótulos do eixo Y (só na versão completa)
+  if (!compact) {
+    const ticks = 3;
+    for (let i = 0; i <= ticks; i++) {
+      const hz = lo + (hi - lo) * (i / ticks);
+      const y = yOf(hz).toFixed(1);
+      svg += `<line x1="${padL}" y1="${y}" x2="${padL + plotW}" y2="${y}" stroke="#1a6630" stroke-width="0.5" opacity="0.5"/>`;
+      svg += `<text x="${padL - 4}" y="${(+y + 3).toFixed(1)}" fill="#6aaa6a" font-size="8" text-anchor="end" font-family="'Share Tech Mono',monospace">${fmtHz(hz)}</text>`;
+    }
+  }
+
+  // Curva: um polyline por estágio (a folga entre eles É o entalhe)
+  const NOTCH_PX = compact ? 1.6 : 2.6;
+  res.forEach((st, i) => {
+    const N = 26;
+    let pts = [];
+    for (let k = 0; k <= N; k++) {
+      const t = st.t0 + (st.len * k) / N;
+      const hz = freqAtTime(res, Math.min(t, st.t1 - 0.001), offAt(t));
+      pts.push({ t, x: M.xOf(t), y: yOf(hz) });
+    }
+    // recuo nas pontas = entalhe
+    const x0 = pts[0].x + (i > 0 ? NOTCH_PX : 0);
+    const x1 = pts[N].x - (i < res.length - 1 ? NOTCH_PX : 0);
+    for (let k = 0; k < N; k++) {
+      const a = pts[k], b = pts[k + 1];
+      if (b.x < x0 || a.x > x1) continue;
+      const midT = (a.t + b.t) / 2;
+      const hz = freqAtTime(res, midT, offAt(midT));
+      const past = midT <= elapsed;
+      svg += `<line x1="${Math.max(a.x, x0).toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${Math.min(b.x, x1).toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${freqToColor(hz)}" stroke-width="${compact ? 1.8 : 2.2}" stroke-linecap="round" opacity="${past ? 0.95 : 0.22}"/>`;
+    }
+  });
+
+  // Símbolo de quebra de eixo
+  M.segs.forEach(sg => {
+    if (!sg.broken) return;
+    const xc = (sg.x0 + sg.x1) / 2;
+    [-3, 3].forEach(d => {
+      svg += `<path d="M ${(xc + d).toFixed(1)} ${padT + plotH} l 3 -6" stroke="#6aaa6a" stroke-width="1" fill="none" opacity="0.8"/>`;
+    });
+  });
+
+  // Eventos de offset
+  (entry.events || []).forEach(e => {
+    const x = M.xOf(e.t), hz = freqAtTime(res, e.t, e.off);
+    const y = yOf(hz);
+    svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${compact ? 1.8 : 2.4}" fill="#040a04" stroke="#e8f4e8" stroke-width="1"/>`;
+    if (!compact) {
+      svg += `<text x="${(x + 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" fill="#e8f4e8" font-size="7.5" font-family="'Share Tech Mono',monospace">${e.off > 0 ? '+' : ''}${e.off}</text>`;
+    }
+  });
+
+  // Encerramento precoce
+  if (!entry.completed && elapsed < M.total) {
+    const x = M.xOf(elapsed);
+    svg += `<line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${padT + plotH}" stroke="#ff6b35" stroke-width="1" stroke-dasharray="2 2" opacity="0.85"/>`;
+  }
+
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">${svg}</svg>`;
+}
+
+function toggleHistoryGraph(i) {
+  const el = document.getElementById('hg-' + i);
+  if (el) el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+}
+
 function openHistory() {
-  const history = JSON.parse(localStorage.getItem('bs_history') || '[]');
   const list = document.getElementById('history-list');
   if (!history.length) {
     list.innerHTML = '<div class="history-empty">Nenhuma sessão registrada ainda.</div>';
   } else {
-    list.innerHTML = history.map(e => `
-      <div class="history-entry">
+    list.innerHTML = history.map((e, i) => `
+      <div class="history-entry"${e.stages && e.stages.length > 1 ? ` onclick="toggleHistoryGraph(${i})" style="cursor:pointer"` : ''}>
         <div class="history-entry-header">
           <span class="history-freq">${e.protocol ? e.protocol : e.freq + ' Hz'}</span>
           <span class="history-date">${e.date}</span>
@@ -3294,10 +3506,15 @@ function openHistory() {
             <br>${e.completed ? '✓ completo' : '⤺ encerrado em ' + (e.endStageLabel || '?')}
             ${e.offset ? ' · ajuste ' + (e.offset > 0 ? '+' : '') + e.offset.toFixed(1) + ' Hz' : ''}` : ''}
         </div>
+        ${e.stages && e.stages.length > 1 ? `
+        <div id="hg-${i}" style="display:none;margin:8px 0 10px;padding:6px 2px;
+          border-top:1px solid var(--accent-dim);border-bottom:1px solid var(--accent-dim);">
+          ${renderSessionGraph(e, { w: 320, h: 150 })}
+        </div>` : ''}
         <div class="history-tags">
-          ${e.feeling.map(t => `<span class="history-tag positive">${t}</span>`).join('')}
-          ${e.effects.map(t => `<span class="history-tag positive">${t}</span>`).join('')}
-          ${e.adverse.map(t => `<span class="history-tag adverse">${t}</span>`).join('')}
+          ${(e.feeling || []).map(t => `<span class="history-tag positive">${t}</span>`).join('')}
+          ${(e.effects || []).map(t => `<span class="history-tag positive">${t}</span>`).join('')}
+          ${(e.adverse || []).map(t => `<span class="history-tag adverse">${t}</span>`).join('')}
         </div>
       </div>
     `).join('');
