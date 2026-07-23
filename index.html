@@ -244,6 +244,25 @@
   .nav-row {
     display: flex; gap: 10px; width: 100%; margin-top: -8px;
   }
+  @keyframes nightBreath {
+    0%,100% { opacity: 0.20; transform: scale(0.85); }
+    50%     { opacity: 0.90; transform: scale(1.15); }
+  }
+  #night-veil {
+    display: none; position: absolute; inset: 0; z-index: 120; background: #000;
+    flex-direction: column; align-items: center; justify-content: center; gap: 32px;
+  }
+  #night-veil.on { display: flex; }
+  #night-pulse {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 14px rgba(57,255,106,0.8);
+    animation: nightBreath 5s ease-in-out infinite;
+  }
+  #night-veil .night-txt {
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 3px;
+    color: #2f6b3f; text-align: center; line-height: 2.1;
+  }
+  #night-veil .night-txt span { font-size: 9px; letter-spacing: 2px; color: #1d442a; }
   .btn-nav {
     flex: 1; padding: 10px 8px;
     background: transparent; border: 1px solid #1a3a1a; border-radius: 4px;
@@ -1019,6 +1038,15 @@
   </div>
 
     <div class="nav-row">
+      <div id="night-resume" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;
+        border:1px solid var(--accent-dim);border-radius:10px;padding:10px 12px;margin-bottom:10px;
+        background:#060f06;">
+        <span id="night-resume-txt" style="flex:1;min-width:150px;font-family:'Share Tech Mono',monospace;
+          font-size:11px;color:var(--dim);line-height:1.5;"></span>
+        <button class="btn-nav" style="padding:6px 12px" onclick="nightResume()">RETOMAR</button>
+        <button class="btn-nav" style="padding:6px 12px;border-color:#2a2a2a;color:#5a5a5a"
+          onclick="nightDismissResume()">DESCARTAR</button>
+      </div>
       <a href="manual.html" class="btn-nav">📖 MANUAL</a>
       <button class="btn-nav" onclick="openHistory()">📊 HISTÓRICO</button>
       <button class="btn-nav" onclick="showTickReport()" style="border-color:#3a3a1a;color:#8a8a4a">🔬 DIAGNÓSTICO</button>
@@ -1028,7 +1056,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.23b
+    v2026.07.23d
   </div>
 
   <div class="warning">
@@ -1166,7 +1194,15 @@
      <span class="fs-dot" id="fs-dot-1" onclick="goPanel(1)"></span>
      <span class="fs-dot" id="fs-dot-2" onclick="goPanel(2)"></span>
    </div>
-   <button class="btn-stop-fs" onclick="stopSession()">ENCERRAR</button>
+   <button class="btn-stop-fs" onclick="requestStop()">ENCERRAR</button>
+
+   <!-- TELA MÍNIMA (protocolo noturno). De madrugada, só o essencial:
+        está rodando, e como parar. Detalhes atrás de um toque deliberado. -->
+   <div id="night-veil" onclick="nightVeilReveal()">
+     <div id="night-pulse"></div>
+     <div class="night-txt">EM CURSO<br><span>toque para ver detalhes</span></div>
+     <button class="btn-stop-fs" onclick="event.stopPropagation();requestStop()">ENCERRAR</button>
+   </div>
  </div>
 </div>
 
@@ -1302,8 +1338,9 @@ function updateBinauralSub() {
 function formatTime(s) {
   s = Math.max(0, Math.round(s));
   if (s >= 3600) {
-    // Sessão longa: h:mm. Segundos são ruído numa noite e não cabem no display.
-    return Math.floor(s / 3600) + ':' + String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    // Separador 'h' em vez de ':' — "7:30" é indistinguível de 7min30s no
+    // mesmo display. Segundos são ruído numa noite e não cabem.
+    return Math.floor(s / 3600) + 'h' + String(Math.floor((s % 3600) / 60)).padStart(2, '0');
   }
   return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
 }
@@ -1594,8 +1631,22 @@ function toggleSession() {
   if (isRunning) stopSession(); else startSession();
 }
 
+// Encerramento manual do protocolo noturno passa pelo fade de 20s.
+// O 2º toque durante o fade corta na hora — a janela de arrependimento
+// vale mais que um diálogo de confirmação às 3h.
+function requestStop() {
+  if (isRunning && activeProtocol && activeProtocol.night && !sessionCompleted) {
+    if (fadeOutAndStop(20)) return;
+  }
+  stopSession();
+}
+
 function stopSession() {
   isRunning = false;
+  fadingOut = false;
+  nightVeilOff();
+  if (nightVeilTimer) { clearTimeout(nightVeilTimer); nightVeilTimer = null; }
+  nightClearPersist();
   tickLogFlush();
   // Captura o estado do protocolo ANTES de qualquer reset
   const endedStageIdx = currentStageIdx;
@@ -1604,7 +1655,7 @@ function stopSession() {
   const endedProtoLabel = isMultiStage() ? activeProtocol.label : null;
   let endedStages = isMultiStage()
     ? resolvedStages.map(st => ({ freq: st.freq, dur: st.dur, len: st.len, label: st.label,
-                                 vol: st.vol, am: st.am, major: st.major })) : null;
+                                 vol: st.vol, am: st.am, major: st.major, cyc: st.cyc })) : null;
   // Estágios que nunca dispararam (modo infinito trunca após o elástico) entram
   // no registro para o gráfico desenhá-los como fantasma — o que estava
   // planejado e não ocorreu.
@@ -1617,6 +1668,7 @@ function stopSession() {
     }
   }
   const endedOffset = freqOffset;
+  const endedNight = !!(activeProtocol && activeProtocol.night);
   if (offsetPending) { clearTimeout(offsetPending); offsetPending = null; }
   const endedEvents = offsetEvents.slice();
   const endedFlicker = flickerEvents.slice();
@@ -1675,7 +1727,7 @@ function stopSession() {
   // Só pede feedback se a sessão durou mais de 1 minuto real (60s).
   saveState();
   if (elapsedSeconds >= 60) {
-    setTimeout(() => openFeedback({
+    const dadosSessao = {
       freq: currentFreq,
       noise: noiseLabel,
       duration: completedDuration,
@@ -1690,7 +1742,21 @@ function stopSession() {
       events: endedEvents,
       flickerEvents: endedFlicker,
       startFreq: endedStartFreq
-    }), 600);
+    };
+    if (endedNight) {
+      // §7.4 — modal matinal institucionaliza a automonitorização, que é
+      // mecanismo perpetuador na insônia. Grava os dados objetivos e cala.
+      lastSession = dadosSessao;
+      const entry = buildEntry();
+      entry.pendente = true;   // avaliação disponível depois, sem cobrança
+      try {
+        const h = JSON.parse(localStorage.getItem('bs_history') || '[]');
+        h.unshift(entry);
+        localStorage.setItem('bs_history', JSON.stringify(h));
+      } catch (e) {}
+    } else {
+      setTimeout(() => openFeedback(dadosSessao), 600);
+    }
   }
 }
 
@@ -1863,6 +1929,7 @@ function normalizeProtocol(p) {
         step: !!s.step,
         min: (s.min || 0) * 60,
         major: !!s.major,
+        cyc: s.cyc || null,
         wl: s.wl || null,
         flicker: (s.flicker === undefined || s.flicker === null) ? null : !!s.flicker,
         flickerColor: s.flickerColor || null,
@@ -1998,7 +2065,9 @@ function freqAtTime(res, t, offset) {
 // Formatação: inteiro fora de rampa, uma casa durante
 function fmtHz(hz) {
   const r = Math.round(hz);
-  return (Math.abs(hz - r) < 0.05) ? String(r) : hz.toFixed(1);
+  if (Math.abs(hz - r) < 0.05) return String(r);
+  // Abaixo de 1 Hz uma casa perderia o valor: 0,75 viraria "0.8".
+  return hz < 1 ? hz.toFixed(2) : hz.toFixed(1);
 }
 
 
@@ -2044,30 +2113,32 @@ function buildSlowWave(totalMin, aberto) {
   }
   // Frequência corrente — REM herda (§6.4 nota 1: manter o último valor)
   let ult = 6;
-  function ciclo(tab, durOverride, major) {
+  function ciclo(tab, durOverride, nomeCiclo) {
     tab.forEach((st, i) => {
       const f = (st[0] === null) ? ult : st[0];
       ult = f;
       const d = (durOverride && durOverride[i] !== undefined) ? durOverride[i] : st[1];
-      if (d > 0.01) bloco(f, d, st[2], st[3], st[4], major && i === 0);
+      if (d > 0.01) bloco(f, d, st[2], st[3], st[4], nomeCiclo && i === 0,
+                          (nomeCiclo && i === 0) ? { cyc: nomeCiclo } : null);
     });
   }
 
   // ── Indução (§6.1): 6 → 4 Hz em 5 min, só no 1º ciclo
-  S.push({ freq: 6, dur: 0.5, vol: 1.0, am: 0.60, label: 'INDUÇÃO', major: true });
+  S.push({ freq: 6, dur: 0.5, vol: 1.0, am: 0.60, label: 'INDUÇÃO', major: true, cyc: 'INDUÇÃO' });
   S.push({ freq: 4, dur: SW_IND - 0.5, vol: 1.0, am: 0.60, label: 'INDUÇÃO' });
   ult = 4;
 
   const n = swCiclos(totalMin);
   const seq = swSequencia(n);
   const TAB = { inicio: SW_INICIO, meio: SW_MEIO, fim: SW_FIM };
+  const NOME = { inicio: 'INÍCIO', meio: 'MEIO', fim: 'FIM' };
 
   if (aberto) {
     // Modo aberto: sequência nomeada + ciclo de Fim repetido até ~14h.
     // Sem rampa de despertar (§6.6).
-    seq.forEach(k => ciclo(TAB[k], null, true));
+    seq.forEach(k => ciclo(TAB[k], null, NOME[k]));
     let acc = swBase(n);
-    while (acc < 840) { ciclo(SW_FIM, null, true); acc += SW_DUR.fim; }
+    while (acc < 840) { ciclo(SW_FIM, null, 'FIM'); acc += SW_DUR.fim; }
     return S;
   }
 
@@ -2076,20 +2147,20 @@ function buildSlowWave(totalMin, aberto) {
   const folga = Math.max(0, totalMin - swBase(n));
   seq.forEach((k, idx) => {
     const ultimo = (idx === seq.length - 1);
-    if (!ultimo) { ciclo(TAB[k], null, true); return; }
+    if (!ultimo) { ciclo(TAB[k], null, NOME[k]); return; }
     // Último ciclo: rampa de despertar substitui os últimos 20 min (§6.5)
     const tab = TAB[k];
     const nominais = tab.map(st => st[1]);
     let restante = nominais.reduce((a, b) => a + b, 0) - SW_WAKE + folga;
     const soma = nominais.reduce((a, b) => a + b, 0);
     const dur = nominais.map(d => d / soma * restante);
-    ciclo(tab, dur, true);
+    ciclo(tab, dur, NOME[k]);
   });
   // Rampa de despertar — flicker opt-in e Wake Lock só no Beta (§6.5 nota 2)
   SW_DESPERTAR.forEach((st, i) => {
     const ultimo = (i === SW_DESPERTAR.length - 1);
     bloco(st[0], st[1], st[2], st[3], st[4], i === 0,
-          ultimo ? { wl: 'acquire' } : null);
+          Object.assign({}, i === 0 ? { cyc: 'DESPERTAR' } : null, ultimo ? { wl: 'acquire' } : null));
   });
   return S;
 }
@@ -2364,6 +2435,136 @@ function onStageEnter(s) {
   // crossfade existe para evitar.
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// COMPORTAMENTOS NOTURNOS
+// ══════════════════════════════════════════════════════════════════
+
+// ── Tela mínima ───────────────────────────────────────
+// Exibir "REM" às 3h afirma algo que o §2 declara falso: o cronograma
+// descasa da fisiologia real. E monitorar o relógio de madrugada é o
+// comportamento que a TCC-I trabalha para extinguir.
+let nightVeilTimer = null;
+
+function nightVeilOn() {
+  const v = document.getElementById('night-veil');
+  if (v) v.classList.add('on');
+}
+
+function nightVeilOff() {
+  const v = document.getElementById('night-veil');
+  if (v) v.classList.remove('on');
+}
+
+// Toque deliberado revela a tela cheia por 30 s, depois recolhe sozinha.
+function nightVeilReveal() {
+  nightVeilOff();
+  if (nightVeilTimer) clearTimeout(nightVeilTimer);
+  nightVeilTimer = setTimeout(() => {
+    if (isRunning && activeProtocol && activeProtocol.night) nightVeilOn();
+  }, 30000);
+}
+
+// ── Fade de encerramento ──────────────────────────────
+// §4: se um degrau ruído→silêncio na fronteira N3→REM é gatilho de
+// microdespertar, o mesmo degrau ao encerrar também é — e pior, porque
+// muitas vezes se encerra meio adormecido e se volta a dormir.
+let fadingOut = false;
+
+function fadeOutAndStop(segundos) {
+  if (fadingOut) { fadingOut = false; stopSession(); return true; } // 2º toque corta
+  if (!audioCtx || !masterGain || audioCtx.state !== 'running') return false;
+  fadingOut = true;
+  try {
+    const t = audioCtx.currentTime;
+    masterGain.gain.cancelScheduledValues(t);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, t);
+    masterGain.gain.linearRampToValueAtTime(0.0001, t + segundos);
+  } catch (e) { fadingOut = false; return false; }
+  const btn = document.querySelector('#night-veil .btn-stop-fs');
+  if (btn) btn.textContent = 'ENCERRANDO…';
+  setTimeout(() => {
+    if (!fadingOut) return;   // já foi cortado pelo 2º toque
+    fadingOut = false;
+    if (btn) btn.textContent = 'ENCERRAR';
+    stopSession();
+  }, segundos * 1000);
+  return true;
+}
+
+// ── Persistência para retomada ────────────────────────
+// A aba pode ser descartada pelo iOS numa sessão de 9h. Sem áudio a
+// página morre junto, então não há "sessão continuando sem tela" —
+// o pior caso é acordar e ter perdido a noite sem registro nenhum.
+const NIGHT_RESUME_JANELA = 20 * 60 * 1000;  // 20 min
+
+function nightPersist() {
+  if (!isRunning || !activeProtocol || !activeProtocol.night) return;
+  try {
+    localStorage.setItem('em_night_state', JSON.stringify({
+      t0: sessionT0,
+      heartbeat: Date.now(),
+      dur: sessionDuration,
+      infinito: infiniteMode,
+      preset: activeProtocol.sourceKey || 'slowwave',
+      volume: document.getElementById('audio-slider').value
+    }));
+  } catch (e) {}
+}
+
+function nightClearPersist() {
+  try { localStorage.removeItem('em_night_state'); } catch (e) {}
+}
+
+function nightCheckResume() {
+  let st = null;
+  try { st = JSON.parse(localStorage.getItem('em_night_state') || 'null'); } catch (e) {}
+  if (!st || !st.t0) return;
+  const desde = Date.now() - (st.heartbeat || 0);
+  if (desde > NIGHT_RESUME_JANELA) { nightClearPersist(); return; }
+  const decorrido = Date.now() - st.t0;
+  if (!st.infinito && decorrido >= st.dur * 1000) { nightClearPersist(); return; }
+  nightResumeOffer = st;
+  const restante = st.infinito ? null : Math.round((st.dur * 1000 - decorrido) / 60000);
+  const banner = document.getElementById('night-resume');
+  if (!banner) return;
+  const hora = new Date(st.heartbeat).toTimeString().slice(0, 5);
+  document.getElementById('night-resume-txt').textContent =
+    'Slow Wave interrompido às ' + hora +
+    (restante !== null ? ' · faltam ' + Math.floor(restante / 60) + 'h' +
+      String(restante % 60).padStart(2, '0') : '');
+  banner.style.display = 'flex';
+}
+
+let nightResumeOffer = null;
+
+// Retomar continua no TEMPO ABSOLUTO — não reinicia do ponto onde parou,
+// senão o despertar sairia atrasado pelo tanto que a aba ficou fora.
+function nightResume() {
+  const st = nightResumeOffer;
+  if (!st) return;
+  document.getElementById('night-resume').style.display = 'none';
+  applyPreset(st.preset || 'slowwave');
+  sessionDuration = st.dur;
+  lastFiniteDuration = st.dur;
+  if (st.infinito !== infiniteMode) toggleInfinite();
+  const vol = document.getElementById('audio-slider');
+  if (vol && st.volume) { vol.value = st.volume; updateAudioVolume(st.volume); }
+  rebuildResolved();
+  nightResumeT0 = st.t0;
+  toggleSession();
+  nightResumeOffer = null;
+}
+
+function nightDismissResume() {
+  nightResumeOffer = null;
+  nightClearPersist();
+  const b = document.getElementById('night-resume');
+  if (b) b.style.display = 'none';
+}
+
+let nightResumeT0 = null;
+
 // ── INSTRUMENTAÇÃO DE TICKS ───────────────────────────
 // Mede o intervalo real entre ticks do setInterval para decidir, com dado,
 // se um relógio baseado em AudioContext é necessário para sessões longas.
@@ -2406,7 +2607,14 @@ function tickLogFlush() {
   } catch (e) {}
 }
 
-document.addEventListener('visibilitychange', () => { if (isRunning) tickLogFlush(); });
+document.addEventListener('visibilitychange', () => {
+  if (isRunning) tickLogFlush();
+  // Voltar à tela de madrugada mostra a versão mínima, não a cheia
+  if (!document.hidden && isRunning && activeProtocol && activeProtocol.night && !fadingOut) {
+    nightPersist();
+    nightVeilOn();
+  }
+});
 
 function showTickReport() {
   let all = [];
@@ -2720,7 +2928,9 @@ function startSession() {
   requestAnimationFrame(() => animateLogoToTimer());
 
   // Timer baseado em Date.now() — robusto a throttling em segundo plano
-  const sessionStartTime = Date.now();
+  // Retomada continua no tempo absoluto da sessão original
+  const sessionStartTime = (nightResumeT0 !== null) ? nightResumeT0 : Date.now();
+  nightResumeT0 = null;
   sessionT0 = sessionStartTime;
   const sessionStartRemaining = timeRemaining;
 
@@ -2741,11 +2951,20 @@ function startSession() {
   updateStageMarks();
   updateStageLabel();
   tickLogStart();
+  fadingOut = false;
+  if (activeProtocol && activeProtocol.night) {
+    // Deixa a tela cheia visível pelos primeiros 30s (calibração do volume, §8)
+    nightVeilReveal();
+    nightPersist();
+  } else {
+    nightVeilOff();
+  }
 
   timerInterval = setInterval(() => {
     const wallSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
     elapsedSeconds = wallSeconds;
     tickLogRecord();
+    if (activeProtocol && activeProtocol.night && wallSeconds % 30 === 0) nightPersist();
 
     // ── RAMPA SEM ESTADO ──────────────────────────────
     // Calculada do zero a partir do tempo decorrido. Se o tick não
@@ -3423,6 +3642,7 @@ loadLastState();
 syncFlickIntensity();
 rebuildResolved();
 updateProtocolChip();
+nightCheckResume();
 (function initEndSignal() {
   try {
     const saved = localStorage.getItem('em_endsignal');
@@ -3590,9 +3810,19 @@ function closeFeedback() {
   document.getElementById('feedback-modal').classList.remove('active');
 }
 
+function durTxt(mins) {
+  if (mins >= 60) {
+    const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+    return m ? h + 'h' + String(m).padStart(2, '0') : h + 'h';
+  }
+  return (mins >= 1 ? Math.round(mins) + "'" : Math.round(mins * 60) + 's');
+}
+
 // Linha compacta legível: "10→7 (3') · 5.5 (12') · 14 (2')"
+// Protocolo longo com ciclos nomeados condensa: listar 38 estágios é ilegível.
 function formatProtocolLine(stages) {
   if (!stages || !stages.length) return '';
+  if (stages.some(s => s.cyc)) return formatCycleLine(stages);
   return stages.map((s, i) => {
     const mins = (s.len !== undefined && isFinite(s.len)) ? (s.len / 60) : (s.dur / 60);
     const d = mins >= 1 ? Math.round(mins) + "'" : Math.round(mins * 60) + 's';
@@ -3601,6 +3831,25 @@ function formatProtocolLine(stages) {
       ? fmtHz(prev) + '→' + fmtHz(s.freq) : fmtHz(s.freq);
     return head + ' (' + d + ')';
   }).join(' · ');
+}
+
+// "INDUÇÃO 5' · 2× INÍCIO 1h25 · 2× MEIO 1h30 · FIM 1h35 · DESPERTAR 20'"
+function formatCycleLine(stages) {
+  const grupos = [];
+  stages.forEach(s => {
+    const mins = ((s.len !== undefined && s.len !== null && isFinite(s.len)) ? s.len : (s.dur || 0)) / 60;
+    if (s.cyc) grupos.push({ nome: s.cyc, min: mins });
+    else if (grupos.length) grupos[grupos.length - 1].min += mins;
+  });
+  // Colapsa ciclos consecutivos idênticos
+  const out = [];
+  grupos.forEach(g => {
+    const txt = durTxt(g.min);
+    const ult = out[out.length - 1];
+    if (ult && ult.nome === g.nome && ult.txt === txt) { ult.n++; return; }
+    out.push({ nome: g.nome, txt: txt, n: 1 });
+  });
+  return out.map(g => (g.n > 1 ? g.n + '× ' : '') + g.nome + ' ' + g.txt).join(' · ');
 }
 
 function buildEntry() {
@@ -3695,7 +3944,7 @@ function entryStages(entry) {
     }
     out.push({ freq: st.freq, dur: st.dur || 0, len: len, label: st.label || '',
                vol: st.vol, am: (st.am === undefined ? null : st.am),
-               major: !!st.major, t0: t, t1: t + len, step: false });
+               major: !!st.major, cyc: st.cyc || null, t0: t, t1: t + len, step: false });
     t += len;
   }
   return out;
@@ -3787,9 +4036,24 @@ function renderSessionGraph(entry, opts) {
     evs.map(e => (e.hz !== undefined ? e.hz : res[0].freq)));
   const extra = proto ? Math.max(0, ...evs.map(e => Math.abs(e.off || 0))) : 0;
   let lo = Math.min(...freqs) - extra, hi = Math.max(...freqs) + extra;
-  const pad = Math.max(0.6, (hi - lo) * 0.18);
-  lo = Math.max(0.5, lo - pad); hi = hi + pad;
-  const yOf = (hz) => padT + plotH * (1 - (hz - lo) / ((hi - lo) || 1));
+  // Escala log quando a razão passa de 4×. Em linear, um protocolo que vai de
+  // 0,75 a 13 Hz gasta 61% da altura com os 20 min da rampa de despertar e
+  // espreme as 7h da noite em 12%.
+  const usaLog = (Math.min(...freqs) > 0) && (Math.max(...freqs) / Math.min(...freqs) > 4);
+  let yOf, ticksY;
+  if (usaLog) {
+    const l0 = Math.log10(Math.max(0.1, lo * 0.85)), l1 = Math.log10(hi * 1.15);
+    yOf = (hz) => padT + plotH * (1 - (Math.log10(Math.max(0.1, hz)) - l0) / ((l1 - l0) || 1));
+    // Rótulos em valores redondos da própria escala — tornam a compressão visível
+    ticksY = [0.75, 1, 2, 3, 5, 8, 13, 20, 40]
+      .filter(v => v >= lo * 0.85 && v <= hi * 1.15);
+    if (ticksY.length < 3) ticksY = [lo, Math.sqrt(lo * hi), hi];
+  } else {
+    const pad = Math.max(0.6, (hi - lo) * 0.18);
+    lo = Math.max(0.5, lo - pad); hi = hi + pad;
+    yOf = (hz) => padT + plotH * (1 - (hz - lo) / ((hi - lo) || 1));
+    ticksY = [0, 1, 2, 3].map(i => lo + (hi - lo) * (i / 3));
+  }
 
   const M = buildXMap(res, plotW);
   const elapsed = entry.elapsed || M.total;
@@ -3824,10 +4088,9 @@ function renderSessionGraph(entry, opts) {
 
   // Grade discreta + rótulos do eixo Y (só na versão completa)
   if (!compact) {
-    const ticks = 3;
-    for (let i = 0; i <= ticks; i++) {
-      const hz = lo + (hi - lo) * (i / ticks);
+    for (const hz of ticksY) {
       const y = yOf(hz).toFixed(1);
+      if (+y < padT - 1 || +y > padT + plotH + 1) continue;
       svg += `<line x1="${padL}" y1="${y}" x2="${padL + plotW}" y2="${y}" stroke="#1a6630" stroke-width="0.5" opacity="0.5"/>`;
       svg += `<text x="${padL - 4}" y="${(+y + 3).toFixed(1)}" fill="#6aaa6a" font-size="8" text-anchor="end" font-family="'Share Tech Mono',monospace">${fmtHz(hz)}</text>`;
     }
@@ -3835,6 +4098,11 @@ function renderSessionGraph(entry, opts) {
 
   // Curva: um polyline por estágio (a folga entre eles É o entalhe)
   const NOTCH_PX = compact ? 1.6 : 2.6;
+  // Mesma regra do arco: com `major` declarado, só essas fronteiras entalham.
+  // Sem isso, 37 estágios × 2,6px de recuo devoram os crossfades de 0,3px e a
+  // curva vira platôs soltos.
+  const temMajor = res.some(st => st.major);
+  const entalha = (i) => (i > 0 && i < res.length) && (!temMajor || res[i].major);
   res.forEach((st, i) => {
     const N = proto ? 26 : 120;
     let pts = [];
@@ -3844,8 +4112,8 @@ function renderSessionGraph(entry, opts) {
       pts.push({ t, x: X(t), y: yOf(hz) });
     }
     // recuo nas pontas = entalhe
-    const x0 = pts[0].x + (i > 0 ? NOTCH_PX : 0);
-    const x1 = pts[N].x - (i < res.length - 1 ? NOTCH_PX : 0);
+    const x0 = pts[0].x + (entalha(i) ? NOTCH_PX : 0);
+    const x1 = pts[N].x - (entalha(i + 1) ? NOTCH_PX : 0);
     for (let k = 0; k < N; k++) {
       const a = pts[k], b = pts[k + 1];
       if (b.x < x0 || a.x > x1) continue;
@@ -3923,6 +4191,7 @@ function openHistory() {
         </div>
         <div style="font-size:11px;color:var(--dim);margin-bottom:6px;">
           ${e.noise} · ${e.duration}min · ${e.mode}
+          ${e.pendente ? `<br><span style="color:var(--dim);opacity:0.7;font-size:10px;">○ sem avaliação</span>` : ''}
           ${e.protocol ? `<br><span style="color:var(--accent);opacity:0.8">${e.protoLine || ''}</span>
             <br>${e.completed ? '✓ completo' : '⤺ encerrado em ' + (e.endStageLabel || '?')}
             ${e.offset ? ' · ajuste ' + (e.offset > 0 ? '+' : '') + e.offset.toFixed(1) + ' Hz' : ''}` : ''}
