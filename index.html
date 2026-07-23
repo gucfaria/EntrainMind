@@ -896,6 +896,10 @@
         <span class="preset-name">🔬 40Hz PESQUISA</span>
         <span class="preset-desc">40 Hz · Branco · Flicker âmbar · 20min</span>
       </button>
+      <button class="preset-btn" onclick="applyPreset('slowwave')">
+        <span class="preset-name">🌙 SLOW WAVE</span>
+        <span class="preset-desc">Noite · 6h–9h · Marrom · sem binaural</span>
+      </button>
       <button class="preset-btn" onclick="applyPreset('powernap')">
         <span class="preset-name">😴 POWER NAP</span>
         <span class="preset-desc">10→5,5→14 Hz · Marrom · 13–30min</span>
@@ -1024,7 +1028,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.22g
+    v2026.07.23a
   </div>
 
   <div class="warning">
@@ -1775,7 +1779,17 @@ const PRESETS = {
   gamma:      { freq:40, noise:'white', binaural:true,  dur:15, flicker:false, label:'GAMMA',         desc:'40 Hz · Branco · Binaural · 15min' },
   alzheimer:  { freq:40, noise:'white', binaural:true,  dur:20, flicker:true,  flickerColor:'amber', label:'40Hz PESQUISA', desc:'40 Hz · Branco · Flicker âmbar · 20min' },
 
-  // ── PROTOCOLO MULTI-ESTÁGIO ──────────────────────────
+  // ── PROTOCOLOS MULTI-ESTÁGIO ─────────────────────────
+  slowwave: {
+    label: 'SLOW WAVE',
+    desc: 'Noite · 6h–9h · Marrom · sem binaural',
+    noise: 'brown', binaural: false, flicker: false, flickerColor: 'white',
+    dur: 450, minDur: 360, maxDur: 540, durStep: 15,
+    night: true, forcePlayback: true, endSignal: false,
+    gen: 'slowwave', releaseWakeLock: SW_IND,
+    stages: []   // gerados por buildSlowWave() conforme a duração
+  },
+
   powernap: {
     label: 'POWER NAP',
     desc: '10→5,5→14 Hz · Marrom · 13–30min',
@@ -1817,6 +1831,9 @@ function normalizeProtocol(p) {
       noise: p.noise, binaural: p.binaural,
       flickerColor: p.flickerColor || currentFlickerColor,
       minDur: p.minDur || null, maxDur: p.maxDur || null,
+      durStep: p.durStep || 1,
+      night: !!p.night, forcePlayback: !!p.forcePlayback,
+      gen: p.gen || null, releaseWakeLock: p.releaseWakeLock || null,
       endSignal: p.endSignal || false,
       defaultDur: p.dur || null,
       stages: p.stages.map(s => ({
@@ -1826,6 +1843,7 @@ function normalizeProtocol(p) {
         step: !!s.step,
         min: (s.min || 0) * 60,
         major: !!s.major,
+        wl: s.wl || null,
         flicker: (s.flicker === undefined || s.flicker === null) ? null : !!s.flicker,
         flickerColor: s.flickerColor || null,
         vol: (s.vol === undefined || s.vol === null) ? 1 : Number(s.vol),
@@ -1963,6 +1981,110 @@ function fmtHz(hz) {
   return (Math.abs(hz - r) < 0.05) ? String(r) : hz.toFixed(1);
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// SLOW WAVE — gerador do protocolo noturno
+// ------------------------------------------------------------------
+// Tabelas do §6 da especificação. O crossfade de 90 s se expressa como
+// split rampa+sustentação: a rampa carrega o alvo (interpola a partir do
+// estágio anterior), a sustentação repete os mesmos valores e segura.
+// ══════════════════════════════════════════════════════════════════
+
+const SW_XF = 1.5;   // crossfade em minutos
+const SW_IND = 5;    // bloco de indução
+const SW_WAKE = 20;  // rampa de despertar
+
+// [freq, dur, vol, am]  — REM herda a frequência do estágio anterior
+const SW_INICIO = [[2.5, 20, 0.85, 0.50, 'N2'], [0.75, 50, 0.75, 0.45, 'N3'], [null, 15, 0.60, 0, 'REM']];
+const SW_MEIO   = [[2.5, 35, 0.65, 0.45, 'N2'], [0.75, 25, 0.60, 0.40, 'N3'], [null, 30, 0.50, 0, 'REM']];
+const SW_FIM    = [[2.5, 40, 0.50, 0.35, 'N2'], [null, 50, 0.45, 0, 'REM']];
+const SW_DESPERTAR = [[4, 5, 0.50, 0.30, 'SAÍDA'], [6, 5, 0.65, 0.45, 'THETA'],
+                      [10, 5, 0.80, 0.60, 'ALFA'], [13, 5, 1.00, 0.70, 'BETA']];
+
+const SW_DUR = { inicio: 85, meio: 90, fim: 90 };
+
+// Sequência de arquétipos por número de ciclos (§6.6)
+function swSequencia(n) {
+  if (n <= 4) return ['inicio', 'inicio', 'meio', 'fim'];
+  if (n === 5) return ['inicio', 'inicio', 'meio', 'meio', 'fim'];
+  return ['inicio', 'inicio', 'meio', 'meio', 'fim', 'fim'];
+}
+
+function swBase(n) {
+  return SW_IND + swSequencia(n).reduce((a, k) => a + SW_DUR[k], 0);
+}
+
+// Maior número de ciclos que cabe na duração pedida
+function swCiclos(totalMin) {
+  let n = 4;
+  for (let k = 6; k >= 4; k--) { if (swBase(k) <= totalMin) { n = k; break; } }
+  return n;
+}
+
+function buildSlowWave(totalMin, aberto) {
+  const S = [];
+  // Um bloco lógico vira rampa (SW_XF) + sustentação
+  function bloco(freq, dur, vol, am, label, major, extra) {
+    const base = { vol: vol, am: am, label: label };
+    if (dur <= SW_XF) {
+      S.push(Object.assign({ freq: freq, dur: dur, major: !!major }, base, extra || {})); return;
+    }
+    // `extra` (ex.: wl) só na rampa — a sustentação repete valores, não ações
+    S.push(Object.assign({ freq: freq, dur: SW_XF, major: !!major }, base, extra || {}));
+    S.push(Object.assign({ freq: freq, dur: dur - SW_XF }, base));
+  }
+  // Frequência corrente — REM herda (§6.4 nota 1: manter o último valor)
+  let ult = 6;
+  function ciclo(tab, durOverride, major) {
+    tab.forEach((st, i) => {
+      const f = (st[0] === null) ? ult : st[0];
+      ult = f;
+      const d = (durOverride && durOverride[i] !== undefined) ? durOverride[i] : st[1];
+      if (d > 0.01) bloco(f, d, st[2], st[3], st[4], major && i === 0);
+    });
+  }
+
+  // ── Indução (§6.1): 6 → 4 Hz em 5 min, só no 1º ciclo
+  S.push({ freq: 6, dur: 0.5, vol: 1.0, am: 0.60, label: 'INDUÇÃO', major: true });
+  S.push({ freq: 4, dur: SW_IND - 0.5, vol: 1.0, am: 0.60, label: 'INDUÇÃO' });
+  ult = 4;
+
+  const n = swCiclos(totalMin);
+  const seq = swSequencia(n);
+  const TAB = { inicio: SW_INICIO, meio: SW_MEIO, fim: SW_FIM };
+
+  if (aberto) {
+    // Modo aberto: sequência nomeada + ciclo de Fim repetido até ~14h.
+    // Sem rampa de despertar (§6.6).
+    seq.forEach(k => ciclo(TAB[k], null, true));
+    let acc = swBase(n);
+    while (acc < 840) { ciclo(SW_FIM, null, true); acc += SW_DUR.fim; }
+    return S;
+  }
+
+  // ── Modo planejado ────────────────────────────────────────────
+  // A folga vai para o ciclo final: N2 e REM esticam na proporção deles.
+  const folga = Math.max(0, totalMin - swBase(n));
+  seq.forEach((k, idx) => {
+    const ultimo = (idx === seq.length - 1);
+    if (!ultimo) { ciclo(TAB[k], null, true); return; }
+    // Último ciclo: rampa de despertar substitui os últimos 20 min (§6.5)
+    const tab = TAB[k];
+    const nominais = tab.map(st => st[1]);
+    let restante = nominais.reduce((a, b) => a + b, 0) - SW_WAKE + folga;
+    const soma = nominais.reduce((a, b) => a + b, 0);
+    const dur = nominais.map(d => d / soma * restante);
+    ciclo(tab, dur, true);
+  });
+  // Rampa de despertar — flicker opt-in e Wake Lock só no Beta (§6.5 nota 2)
+  SW_DESPERTAR.forEach((st, i) => {
+    const ultimo = (i === SW_DESPERTAR.length - 1);
+    bloco(st[0], st[1], st[2], st[3], st[4], i === 0,
+          ultimo ? { wl: 'acquire' } : null);
+  });
+  return S;
+}
+
 // Estado do protocolo ativo
 let activeProtocol = normalizeProtocol(PRESETS.tdah);
 let resolvedStages = [];
@@ -1971,11 +2093,20 @@ let currentStageIdx = -1;
 let sessionT0 = 0; // Date.now() do início da sessão — compartilhado entre tick e slider
 let lastAppliedVol = 1;
 let lastAppliedAm = -1;
+let wakeLockSuspenso = false;
+let wakeLockLiberado = false;
 let endSignalFired = false;
 let sessionCompleted = false;
 
 function rebuildResolved() {
+  // Protocolo gerado: os estágios dependem da duração escolhida, então são
+  // reconstruídos a cada mudança do anel ou do modo.
+  if (activeProtocol && activeProtocol.gen === 'slowwave') {
+    const bruto = buildSlowWave(Math.round(sessionDuration / 60), infiniteMode);
+    activeProtocol.stages = normalizeProtocol({ stages: bruto }).stages;
+  }
   resolvedStages = resolveStages(activeProtocol, sessionDuration, infiniteMode);
+  updateProtocolChip();
 }
 
 // Protocolo de estágio único adota a frequência que o usuário escolheu no
@@ -1995,13 +2126,26 @@ function isMultiStage() {
 function updateProtocolChip() {
   const el = document.getElementById('proto-chip');
   if (!el) return;
-  if (isMultiStage() && activeProtocol.label) {
-    const lo = activeProtocol.minDur, hi = activeProtocol.maxDur;
-    el.textContent = activeProtocol.label + (lo && hi ? ' · ' + lo + "–" + hi + "'" : '');
-    el.style.display = 'inline-block';
+  if (!isMultiStage() || !activeProtocol.label) { el.style.display = 'none'; return; }
+  let txt = activeProtocol.label;
+  if (activeProtocol.night) {
+    // Derivados: o anel escolhe a duração; ciclos e horário saem dela.
+    const min = Math.round(sessionDuration / 60);
+    if (infiniteMode) {
+      txt += ' · ABERTO';
+    } else {
+      const h = Math.floor(min / 60), m = min % 60;
+      const fim = new Date(Date.now() + min * 60000);
+      txt += ' · ' + h + 'h' + (m ? String(m).padStart(2, '0') : '') +
+             ' · ' + swCiclos(min) + ' ciclos · ' +
+             String(fim.getHours()).padStart(2, '0') + ':' + String(fim.getMinutes()).padStart(2, '0');
+    }
   } else {
-    el.style.display = 'none';
+    const lo = activeProtocol.minDur, hi = activeProtocol.maxDur;
+    if (lo && hi) txt += ' · ' + lo + '–' + hi + "'";
   }
+  el.textContent = txt;
+  el.style.display = 'inline-block';
 }
 
 // ── RÓTULO DE ESTÁGIO (tela de sessão) ────────────────
@@ -2182,8 +2326,16 @@ function toggleEndSignal(on) {
 }
 
 // Aplica os parâmetros declarados no estágio (nulo = não mexe)
+function releaseWakeLockNow() {
+  wakeLockSuspenso = true;
+  if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+  dbgLog('wakeLock liberado pelo protocolo');
+}
+
 function onStageEnter(s) {
   if (!s) return;
+  // §7.2 — tela acesa é fonte de luz no quarto; áudio em playback não precisa dela.
+  if (s.wl === 'acquire' && currentFlicker) { wakeLockSuspenso = false; acquireWakeLock(); }
   // Protocolo de estágio único não tem parâmetros próprios a aplicar —
   // a UI (applyPreset, sliders, toggles) já é a fonte de verdade.
   if (!isMultiStage()) return;
@@ -2573,6 +2725,8 @@ function startSession() {
   resetOffsetEvents();
   lastAppliedVol = 1;
   lastAppliedAm = -1;
+  wakeLockSuspenso = false;
+  wakeLockLiberado = false;
   sessionStartFreq = currentFreq;
   if (currentFlicker) flickerEvents.push({ t: 0, on: true, color: currentFlickerColor });
   updateStageMarks();
@@ -2617,6 +2771,12 @@ function startSession() {
           applyAMDepth(a, 1.0);
         }
       }
+      // §7.2 — soltar o Wake Lock ao fim da indução
+      if (!wakeLockLiberado && activeProtocol.releaseWakeLock &&
+          t >= activeProtocol.releaseWakeLock * 60) {
+        wakeLockLiberado = true;
+        releaseWakeLockNow();
+      }
       const totalSec = totalResolved(resolvedStages);
       if (isFinite(totalSec) && totalSec > 0) updateArcFade(t / totalSec);
       const si = stageIndexAtTime(resolvedStages, t);
@@ -2653,10 +2813,16 @@ function startSession() {
 }
 
 // ── MODO BACKGROUND ──────────────────────────────────
-let backgroundMode = false;
+// Padrão: ligado no iOS. Desligar vira a opção de coexistência (ex.: Spotify).
+let backgroundMode = isIOS;
+try {
+  const bg = localStorage.getItem('em_bgmode');
+  if (bg !== null) backgroundMode = (bg === '1');
+} catch (e) {}
 
 function onBgModeToggle(enabled) {
   backgroundMode = enabled;
+  try { localStorage.setItem('em_bgmode', enabled ? '1' : '0'); } catch (e) {}
   const thumb = document.getElementById('bg-thumb-dot');
   const track = document.getElementById('bg-mode-thumb');
   if (enabled) {
@@ -2677,11 +2843,12 @@ function onBgModeToggle(enabled) {
 
 // Toggle de background dentro da sessão — reaplica audioSession ao vivo
 function fsToggleBg() {
+  if (activeProtocol && activeProtocol.forcePlayback && isRunning) return; // §7.1
   onBgModeToggle(!backgroundMode);
   const home = document.getElementById('bg-mode-toggle');
   if (home) home.checked = backgroundMode;
   if (audioCtx && navigator.audioSession && audioCtx.state === 'running') {
-    navigator.audioSession.type = (isIOS && backgroundMode) ? 'playback' : 'ambient';
+    navigator.audioSession.type = audioSessionType();
     dbgLog('audioSession (toggle in-session) → ' + navigator.audioSession.type);
     dbgUpdateState();
   }
@@ -2995,7 +3162,7 @@ function syncFsControls() {
 // ── WAKE LOCK ────────────────────────────────────────
 async function acquireWakeLock(attempt) {
   attempt = attempt || 1;
-  if (!('wakeLock' in navigator) || !isRunning) return;
+  if (!('wakeLock' in navigator) || !isRunning || wakeLockSuspenso) return;
   try {
     wakeLock = await navigator.wakeLock.request('screen');
     dbgLog('wakeLock OK (tentativa ' + attempt + ')');
@@ -3003,7 +3170,7 @@ async function acquireWakeLock(attempt) {
     wakeLock.addEventListener('release', () => {
       dbgLog('wakeLock liberado pelo sistema');
       wakeLock = null;
-      if (isRunning) {
+      if (isRunning && !wakeLockSuspenso) {
         // Retry com backoff: 500ms, 1s, 2s
         const delay = Math.min(500 * attempt, 2000);
         setTimeout(() => acquireWakeLock(attempt + 1), delay);
@@ -3023,10 +3190,17 @@ function dbgLog(msg) { console.log('[EM]', msg); }
 function dbgUpdateState() {}
 
 // Aplica audioSession após confirmar que contexto está running
+// §7.1 — o protocolo noturno força 'playback': uma sessão de 9h que não toca
+// por causa do interruptor de silencioso é o pior desfecho possível.
+function audioSessionType() {
+  if (isIOS && activeProtocol && activeProtocol.forcePlayback && isRunning) return 'playback';
+  return (isIOS && backgroundMode) ? 'playback' : 'ambient';
+}
+
 function applyAudioSession() {
   if (!navigator.audioSession || !audioCtx) return;
   if (audioCtx.state === 'running') {
-    navigator.audioSession.type = (isIOS && backgroundMode) ? 'playback' : 'ambient';
+    navigator.audioSession.type = audioSessionType();
     dbgLog('audioSession → ' + navigator.audioSession.type + ' (ctx: ' + audioCtx.state + ')');
     dbgUpdateState();
   } else {
@@ -3034,7 +3208,7 @@ function applyAudioSession() {
     audioCtx.addEventListener('statechange', function onStateChange() {
       if (audioCtx.state === 'running') {
         audioCtx.removeEventListener('statechange', onStateChange);
-        navigator.audioSession.type = (isIOS && backgroundMode) ? 'playback' : 'ambient';
+        navigator.audioSession.type = audioSessionType();
         dbgLog('audioSession → ' + navigator.audioSession.type + ' (ctx chegou a running)');
         dbgUpdateState();
       }
@@ -3059,7 +3233,7 @@ document.addEventListener('visibilitychange', () => {
       dbgUpdateState();
       // Reaplicar audioSession após resume — iOS pode ter resetado
       if (navigator.audioSession) {
-        navigator.audioSession.type = (isIOS && backgroundMode) ? 'playback' : 'ambient';
+        navigator.audioSession.type = audioSessionType();
         dbgLog('audioSession reforçado → ' + navigator.audioSession.type);
       }
       if (!wakeLock) acquireWakeLock();
@@ -3172,8 +3346,11 @@ function cancelCustomPress() {
     const dy = startY - pointerY(e);
     if (!isDrag && Math.abs(dy) < DRAG_THRESHOLD) return;
     isDrag = true;
-    const delta = Math.round(dy / 8);
+    const passo = (activeProtocol && activeProtocol.durStep) ? activeProtocol.durStep : 1;
+    // Numa faixa de 6h a 9h, 1px:1min seria inutilizável — o passo escala o gesto.
+    const delta = Math.round(dy / (passo > 1 ? 10 : 8)) * passo;
     let newDur = Math.max(durLo(), Math.min(durHi(), startDur + delta));
+    if (passo > 1) newDur = Math.round(newDur / passo) * passo;
     if (newDur !== getDurMin()) {
       if (infiniteMode) {
         infiniteMode = false;
