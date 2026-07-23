@@ -1028,7 +1028,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.23a
+    v2026.07.23b
   </div>
 
   <div class="warning">
@@ -1244,7 +1244,7 @@ function setFreqPreset(hz, band, el) {
   document.getElementById('freq-val').textContent = hz + ' Hz';
   document.getElementById('freq-band').textContent = 'HERTZ · ' + band;
   document.querySelectorAll('#freq-presets .pill').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
+  if (el) el.classList.add('active');
   updateBinauralSub();
 }
 
@@ -1771,6 +1771,20 @@ if ('serviceWorker' in navigator) {
 <script>
 
 // ── PRESETS ───────────────────────────────────────────
+// Constantes do Slow Wave — precisam preceder PRESETS, que as referencia
+const SW_XF = 1.5;   // crossfade em minutos
+const SW_IND = 5;    // bloco de indução
+const SW_WAKE = 20;  // rampa de despertar
+
+// [freq, dur, vol, am]  — REM herda a frequência do estágio anterior
+const SW_INICIO = [[2.5, 20, 0.85, 0.50, 'N2'], [0.75, 50, 0.75, 0.45, 'N3'], [null, 15, 0.60, 0, 'REM']];
+const SW_MEIO   = [[2.5, 35, 0.65, 0.45, 'N2'], [0.75, 25, 0.60, 0.40, 'N3'], [null, 30, 0.50, 0, 'REM']];
+const SW_FIM    = [[2.5, 40, 0.50, 0.35, 'N2'], [null, 50, 0.45, 0, 'REM']];
+const SW_DESPERTAR = [[4, 5, 0.50, 0.30, 'SAÍDA'], [6, 5, 0.65, 0.45, 'THETA'],
+                      [10, 5, 0.80, 0.60, 'ALFA'], [13, 5, 1.00, 0.70, 'BETA']];
+
+const SW_DUR = { inicio: 85, meio: 90, fim: 90 };
+
 const PRESETS = {
   tdah:       { freq:16, noise:'pink',  binaural:true,  dur:20, flicker:false, label:'TDAH/FOCO',     desc:'16 Hz · Rosa · Binaural · 20min' },
   meditacao:  { freq:8,  noise:'brown', binaural:true,  dur:20, flicker:false, label:'MEDITAÇÃO',     desc:'8 Hz · Marrom · Binaural · 20min' },
@@ -1825,6 +1839,12 @@ const PRESETS = {
 
 function normalizeProtocol(p) {
   if (!p) return null;
+  // Protocolo com gerador: os estágios são produzidos aqui, para que
+  // applyPreset já encontre um protocolo completo. rebuildResolved()
+  // regenera depois, quando a duração muda.
+  if (p.gen === 'slowwave' && (!p.stages || !p.stages.length)) {
+    p = Object.assign({}, p, { stages: buildSlowWave(p.dur || 450, false) });
+  }
   if (p.stages && Array.isArray(p.stages)) {
     return {
       label: p.label || '', desc: p.desc || '',
@@ -1990,18 +2010,7 @@ function fmtHz(hz) {
 // estágio anterior), a sustentação repete os mesmos valores e segura.
 // ══════════════════════════════════════════════════════════════════
 
-const SW_XF = 1.5;   // crossfade em minutos
-const SW_IND = 5;    // bloco de indução
-const SW_WAKE = 20;  // rampa de despertar
 
-// [freq, dur, vol, am]  — REM herda a frequência do estágio anterior
-const SW_INICIO = [[2.5, 20, 0.85, 0.50, 'N2'], [0.75, 50, 0.75, 0.45, 'N3'], [null, 15, 0.60, 0, 'REM']];
-const SW_MEIO   = [[2.5, 35, 0.65, 0.45, 'N2'], [0.75, 25, 0.60, 0.40, 'N3'], [null, 30, 0.50, 0, 'REM']];
-const SW_FIM    = [[2.5, 40, 0.50, 0.35, 'N2'], [null, 50, 0.45, 0, 'REM']];
-const SW_DESPERTAR = [[4, 5, 0.50, 0.30, 'SAÍDA'], [6, 5, 0.65, 0.45, 'THETA'],
-                      [10, 5, 0.80, 0.60, 'ALFA'], [13, 5, 1.00, 0.70, 'BETA']];
-
-const SW_DUR = { inicio: 85, meio: 90, fim: 90 };
 
 // Sequência de arquétipos por número de ciclos (§6.6)
 function swSequencia(n) {
