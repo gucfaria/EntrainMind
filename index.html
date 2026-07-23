@@ -1024,7 +1024,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.22f
+    v2026.07.22g
   </div>
 
   <div class="warning">
@@ -1635,6 +1635,8 @@ function stopSession() {
   }
   freqOffset = 0;
   currentStageIdx = -1;
+  const chipV = document.getElementById('fsm-vol-val');
+  if (chipV) chipV.textContent = document.getElementById('audio-slider').value + '%';
   updateStageMarks();
   updateProtocolChip();
   try { if (dialBreathRAF) { cancelAnimationFrame(dialBreathRAF); dialBreathRAF = null; } } catch(e) {}
@@ -1784,7 +1786,10 @@ const PRESETS = {
       { freq: 7,   dur: 3, label: 'DESCIDA' },
       { freq: 5.5, dur: 2, label: 'APROFUNDAMENTO' },
       { freq: 5.5, dur: 0, elastic: true, min: 5, label: 'PLATÔ' },
-      { freq: 14,  dur: 2, flicker: true, flickerColor: 'white', vol: 1.4, label: 'DESPERTAR' }
+      // Despertar em dois tempos: 90s de subida gentil (freq completa a rampa),
+      // depois 30s de surto de volume — ~4 dB, francamente perceptível.
+      { freq: 14,  dur: 1.5, flicker: true, flickerColor: 'white', vol: 1.2, label: 'DESPERTAR' },
+      { freq: 14,  dur: 0.5, vol: 2.0, label: 'DESPERTAR' }
     ]
   },
 };
@@ -2598,6 +2603,12 @@ function startSession() {
           if (masterGain && audioCtx) {
             masterGain.gain.setTargetAtTime(
               Math.min(1, Math.max(0, base * 0.5 * v)), audioCtx.currentTime, 0.4);
+          }
+          // O chip mostra o volume EFETIVO: o mestre e o que o estágio faz com ele.
+          const chipV = document.getElementById('fsm-vol-val');
+          if (chipV) {
+            chipV.textContent = Math.round(base * 100) + '%' +
+              (Math.abs(v - 1) > 0.02 ? ' ×' + v.toFixed(1) : '');
           }
         }
         const a = amAtTime(resolvedStages, t);
