@@ -1024,7 +1024,7 @@
   </div><!-- /sheet-config -->
 
   <div style="text-align:center; margin-top:8px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; opacity:0.6;">
-    v2026.07.22e
+    v2026.07.22f
   </div>
 
   <div class="warning">
@@ -1296,6 +1296,11 @@ function updateBinauralSub() {
 }
 
 function formatTime(s) {
+  s = Math.max(0, Math.round(s));
+  if (s >= 3600) {
+    // Sessão longa: h:mm. Segundos são ruído numa noite e não cabem no display.
+    return Math.floor(s / 3600) + ':' + String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  }
   return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
 }
 function updateTimerDisplay(s) {
@@ -1459,6 +1464,7 @@ function initAudio() {
 
   const depthGain = audioCtx.createGain();
   depthGain.gain.value = depth * 0.5;
+  fsDepthGainNode = depthGain;  // referência para rampa em tempo real
 
   baseGainNode = audioCtx.createConstantSource();
   baseGainNode.offset.value = 1 - depth * 0.5;
@@ -1511,6 +1517,7 @@ function stopAudio() {
   });
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
   noiseSource = amOsc = binauralL = binauralR = masterGain = baseGainNode = null;
+  fsDepthGainNode = fsNoiseGainNode = null;
   binToneL = binToneR = noiseChL = noiseChR = null;
 }
 
@@ -1592,7 +1599,8 @@ function stopSession() {
     ? (resolvedStages[currentStageIdx].label || ('ESTÁGIO ' + (currentStageIdx + 1))) : null;
   const endedProtoLabel = isMultiStage() ? activeProtocol.label : null;
   let endedStages = isMultiStage()
-    ? resolvedStages.map(st => ({ freq: st.freq, dur: st.dur, len: st.len, label: st.label })) : null;
+    ? resolvedStages.map(st => ({ freq: st.freq, dur: st.dur, len: st.len, label: st.label,
+                                 vol: st.vol, am: st.am, major: st.major })) : null;
   // Estágios que nunca dispararam (modo infinito trunca após o elástico) entram
   // no registro para o gráfico desenhá-los como fantasma — o que estava
   // planejado e não ocorreu.
@@ -1600,7 +1608,8 @@ function stopSession() {
     for (let i = resolvedStages.length; i < activeProtocol.stages.length; i++) {
       const st = activeProtocol.stages[i];
       endedStages.push({ freq: st.freq, dur: st.dur,
-                         len: st.elastic ? (st.min || 0) : st.dur, label: st.label });
+                         len: st.elastic ? (st.min || 0) : st.dur, label: st.label,
+                         vol: st.vol, am: st.am, major: st.major });
     }
   }
   const endedOffset = freqOffset;
@@ -1811,6 +1820,7 @@ function normalizeProtocol(p) {
         elastic: !!s.elastic,
         step: !!s.step,
         min: (s.min || 0) * 60,
+        major: !!s.major,
         flicker: (s.flicker === undefined || s.flicker === null) ? null : !!s.flicker,
         flickerColor: s.flickerColor || null,
         vol: (s.vol === undefined || s.vol === null) ? 1 : Number(s.vol),
@@ -1827,7 +1837,7 @@ function normalizeProtocol(p) {
     minDur: null, maxDur: null, endSignal: false,
     defaultDur: p.dur || null,
     stages: [{
-      freq: Number(p.freq), dur: 0, elastic: true, step: false, min: 0,
+      freq: Number(p.freq), dur: 0, elastic: true, step: false, min: 0, major: false,
       flicker: null, // preset plano já aplicou flicker via applyPreset
       flickerColor: null,
       vol: 1, am: null, label: ''
@@ -1861,7 +1871,7 @@ function resolveStages(proto, totalSec, infinite) {
     t = t + d;
     if (!isFinite(t)) break; // estágios após um elástico infinito nunca disparam
   }
-  return out;
+  return fillStageParams(out);
 }
 
 function totalResolved(res) {
@@ -1880,6 +1890,49 @@ function stageIndexAtTime(res, t) {
 
 // SEM ESTADO: dado t, devolve a frequência que DEVE valer agora.
 // Nunca acumula — se o tick não disparar, o próximo já corrige.
+// O piso do clamp vem do próprio protocolo: nunca acima da menor frequência
+// que ele declara. Slow Wave desce a 0,75 Hz; os demais continuam presos em 1.
+function freqFloor(res) {
+  if (res._floor === undefined) {
+    let f = 1;
+    for (const s of res) if (s.freq < f) f = s.freq;
+    Object.defineProperty(res, '_floor', { value: f, enumerable: false });
+  }
+  return res._floor;
+}
+
+// Interpolação genérica de parâmetro de estágio — mesma aritmética da
+// frequência. `null` significa "não especificado": não mexer.
+function paramAtTime(res, t, key) {
+  if (!res.length) return null;
+  const i = stageIndexAtTime(res, t);
+  const s = res[i];
+  const cur = s[key];
+  if (cur === null || cur === undefined) return null;
+  if (i === 0 || s.step) return cur;
+  const prev = res[i - 1][key];
+  if (prev === null || prev === undefined) return cur;
+  let win = s.len;
+  if (!isFinite(win)) win = (s.dur > 0 ? s.dur : 0);
+  const p = win > 0 ? Math.min(1, Math.max(0, (t - s.t0) / win)) : 1;
+  return prev + (cur - prev) * p;
+}
+
+const volAtTime = (res, t) => paramAtTime(res, t, 'volR');
+const amAtTime  = (res, t) => paramAtTime(res, t, 'amR');
+
+// Resolve nulls por arrasto para a frente, para que a interpolação tenha
+// sempre dois números. Sem isso, "não mexer" e "ir a zero" se confundem.
+function fillStageParams(res) {
+  let lastAm = null;
+  for (const s of res) {
+    s.volR = (s.vol === undefined || s.vol === null) ? 1 : s.vol;
+    if (s.am !== null && s.am !== undefined) lastAm = s.am;
+    s.amR = lastAm;
+  }
+  return res;
+}
+
 function freqAtTime(res, t, offset) {
   if (!res.length) return currentFreq;
   const i = stageIndexAtTime(res, t);
@@ -1896,7 +1949,7 @@ function freqAtTime(res, t, offset) {
     hz = prev + (s.freq - prev) * p;
   }
   hz = hz + (offset || 0);
-  return Math.min(40, Math.max(1, hz));
+  return Math.min(40, Math.max(freqFloor(res), hz));
 }
 
 // Formatação: inteiro fora de rampa, uma casa durante
@@ -1911,6 +1964,8 @@ let resolvedStages = [];
 let freqOffset = 0;
 let currentStageIdx = -1;
 let sessionT0 = 0; // Date.now() do início da sessão — compartilhado entre tick e slider
+let lastAppliedVol = 1;
+let lastAppliedAm = -1;
 let endSignalFired = false;
 let sessionCompleted = false;
 
@@ -1946,6 +2001,14 @@ function updateProtocolChip() {
 
 // ── RÓTULO DE ESTÁGIO (tela de sessão) ────────────────
 // Em protocolo, o estágio tem prioridade sobre o rótulo de banda.
+// Sem modulação, a frequência não corresponde a nada audível: não exibir.
+function semEntrainAgora() {
+  if (!isRunning || !isMultiStage() || !resolvedStages.length) return false;
+  const t = (Date.now() - sessionT0) / 1000;
+  const a = amAtTime(resolvedStages, t);
+  return a !== null && a <= 0.001;
+}
+
 function updateStageLabel() {
   const bandEl = document.getElementById('fs-freq-band');
   if (!bandEl) return;
@@ -1999,6 +2062,7 @@ const ARC_SEGMENTS = 150;  // resolução angular (2,4° por segmento)
 const ARC_NOTCH_DEG = 3.6; // largura do entalhe em cada fronteira
 const ARC_OP_AHEAD = 0.95; // opacidade do trecho ainda por vir
 const ARC_OP_PAST = 0.24;  // opacidade do trecho já percorrido
+const NEUTRO = '#1a6630';  // trecho sem entrainment (AM 0) — há áudio, não há modulação
 
 function arcPoint(r, ang) {
   return [(60 + r * Math.sin(ang)).toFixed(2), (60 - r * Math.cos(ang)).toFixed(2)];
@@ -2020,9 +2084,12 @@ function updateStageMarks() {
   const total = totalResolved(resolvedStages);
   if (!isFinite(total) || total <= 0) return;
 
-  // fronteiras em graus (exclui 0 e 360)
+  // Fronteiras entalhadas. Se algum estágio declara `major`, só essas contam —
+  // num protocolo de 37 estágios, entalhar todas apagaria metade do arco.
+  const temMajor = resolvedStages.some(st => st.major);
   const notches = [];
   for (let i = 1; i < resolvedStages.length; i++) {
+    if (temMajor && !resolvedStages[i].major) continue;
     const f = resolvedStages[i].t0 / total;
     if (isFinite(f) && f > 0 && f < 1) notches.push(f * 360);
   }
@@ -2037,12 +2104,15 @@ function updateStageMarks() {
     if (notches.some(n => Math.abs(((mid - n + 540) % 360) - 180) < ARC_NOTCH_DEG / 2)) continue;
 
     const t = (mid / 360) * total;
+    // Sem modulação não há frequência aplicável: faixa neutra, não cor de Hz.
+    const amv = amAtTime(resolvedStages, t);
+    const semEntrain = (amv !== null && amv <= 0.001);
     const hz = freqAtTime(resolvedStages, t, 0);
     const a0 = d0 * Math.PI / 180, a1 = d1 * Math.PI / 180;
     const p0 = arcPoint(ARC_R, a0), p1 = arcPoint(ARC_R, a1);
     const path = document.createElementNS(SVGNS, 'path');
     path.setAttribute('d', 'M ' + p0[0] + ' ' + p0[1] + ' A ' + ARC_R + ' ' + ARC_R + ' 0 0 1 ' + p1[0] + ' ' + p1[1]);
-    path.setAttribute('stroke', freqToColor(hz));
+    path.setAttribute('stroke', semEntrain ? NEUTRO : freqToColor(hz));
     path.setAttribute('stroke-width', ARC_W);
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke-linecap', 'butt');
@@ -2123,14 +2193,9 @@ function onStageEnter(s) {
       if (ov) ov.style.background = FLICKER_COLORS[currentFlickerColor] + '1)';
     }
   }
-  if (s.vol !== undefined && s.vol !== 1) {
-    const base = parseFloat(document.getElementById('audio-slider').value) / 100;
-    const v = Math.min(1, Math.max(0, base * 0.5 * s.vol));
-    if (masterGain && audioCtx) masterGain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.5);
-  }
-  if (s.am !== null && s.am !== undefined) {
-    fsRebuildAM(s.am);
-  }
+  // Volume e AM NÃO são aplicados aqui: interpolam continuamente no tick.
+  // Aplicá-los na entrada do estágio produziria justamente o degrau que o
+  // crossfade existe para evitar.
 }
 
 // ── INSTRUMENTAÇÃO DE TICKS ───────────────────────────
@@ -2501,6 +2566,8 @@ function startSession() {
   endSignalFired = false;
   sessionCompleted = false;
   resetOffsetEvents();
+  lastAppliedVol = 1;
+  lastAppliedAm = -1;
   sessionStartFreq = currentFreq;
   if (currentFlicker) flickerEvents.push({ t: 0, on: true, color: currentFlickerColor });
   updateStageMarks();
@@ -2521,6 +2588,23 @@ function startSession() {
       if (Math.abs(target - currentFreq) > 0.001) {
         applyFreqToAudio(target);
         refreshFreqDisplay(target);
+      }
+      // Volume e AM interpolam como a frequência — uma regra para os três.
+      if (isMultiStage()) {
+        const v = volAtTime(resolvedStages, t);
+        if (v !== null && Math.abs(v - lastAppliedVol) > 0.002) {
+          lastAppliedVol = v;
+          const base = parseFloat(document.getElementById('audio-slider').value) / 100;
+          if (masterGain && audioCtx) {
+            masterGain.gain.setTargetAtTime(
+              Math.min(1, Math.max(0, base * 0.5 * v)), audioCtx.currentTime, 0.4);
+          }
+        }
+        const a = amAtTime(resolvedStages, t);
+        if (a !== null && Math.abs(a - lastAppliedAm) > 0.002) {
+          lastAppliedAm = a;
+          applyAMDepth(a, 1.0);
+        }
       }
       const totalSec = totalResolved(resolvedStages);
       if (isFinite(totalSec) && totalSec > 0) updateArcFade(t / totalSec);
@@ -2633,13 +2717,24 @@ function fsUpdateLight(val) {
 }
 
 let fsDepthGainNode = null;
+// Profundidade de AM em RAMPA, sem parar o oscilador.
+// §4 do protocolo noturno: start/stop de nó é transiente, e transiente é
+// evento arousal. O oscilador roda a noite inteira; o que respira é o ganho.
+function applyAMDepth(depth, rampSec) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const tc = Math.max(0.01, (rampSec === undefined ? 0.15 : rampSec) / 3);
+  if (fsDepthGainNode) fsDepthGainNode.gain.setTargetAtTime(depth * 0.5, t, tc);
+  if (baseGainNode) baseGainNode.offset.setTargetAtTime(1 - depth * 0.5, t, tc);
+}
+
+// Mantida como porta de entrada da UI. Só reconstrói se os nós não existirem
+// (ex.: sessão iniciada sem AM); caso contrário, ramponeia.
 function fsRebuildAM(depth) {
   if (!audioCtx || !noiseSource) return;
-  if (amOsc) { try { amOsc.stop(); } catch(e){} }
-  if (fsDepthGainNode) fsDepthGainNode.disconnect();
-  if (baseGainNode) { try { baseGainNode.stop(); } catch(e){} }
   const noiseGain = fsNoiseGainNode;
   if (!noiseGain) return;
+  if (fsDepthGainNode && baseGainNode && amOsc) { applyAMDepth(depth); return; }
   amOsc = audioCtx.createOscillator();
   amOsc.frequency.value = currentFreq;
   amOsc.type = 'sine';
@@ -2666,7 +2761,7 @@ function applyFreqToAudio(hz) {
 
 // Atualiza os displays de frequência (leves) — usada pela rampa a cada tick
 function refreshFreqDisplay(hz) {
-  const txt = fmtHz(hz);
+  const txt = semEntrainAgora() ? '—' : fmtHz(hz);
   const bigEl = document.getElementById('fs-freq-big');
   if (bigEl) bigEl.textContent = txt;
   if (!isMultiStage()) {
@@ -2676,7 +2771,7 @@ function refreshFreqDisplay(hz) {
   const disp = document.getElementById('freq-display');
   if (disp) disp.textContent = txt;
   const chip = document.getElementById('fsm-freq-val');
-  if (chip) chip.textContent = txt + ' Hz';
+  if (chip) chip.textContent = (txt === '—') ? '—' : txt + ' Hz';
 }
 
 // Caminho de INTERAÇÃO do usuário: arredonda, mexe no slider e no DOM completo.
@@ -3163,7 +3258,7 @@ function saveState() {
     stages: (activeProtocol ? activeProtocol.stages.map(s => ({
       freq: s.freq, dur: s.dur / 60, elastic: s.elastic, step: s.step,
       min: s.min / 60, flicker: s.flicker, flickerColor: s.flickerColor,
-      vol: s.vol, am: s.am, label: s.label
+      vol: s.vol, am: s.am, major: s.major, label: s.label
     })) : null),
     protoLabel: activeProtocol ? activeProtocol.label : '',
     sourceKey: activeProtocol ? (activeProtocol.sourceKey || null) : null,
@@ -3402,7 +3497,8 @@ function entryStages(entry) {
       len = Math.max(0, cap - t); // elástico infinito: vai até onde a sessão foi
     }
     out.push({ freq: st.freq, dur: st.dur || 0, len: len, label: st.label || '',
-               t0: t, t1: t + len, step: false });
+               vol: st.vol, am: (st.am === undefined ? null : st.am),
+               major: !!st.major, t0: t, t1: t + len, step: false });
     t += len;
   }
   return out;
@@ -3426,16 +3522,22 @@ function buildXMap(res, plotW) {
   // Candidato a compressão: estágio de frequência constante (repete o anterior).
   // Protocolo cíclico nunca gera candidato — a frequência muda a cada estágio.
   const cand = res.map((st, i) => i > 0 && Math.abs(st.freq - res[i - 1].freq) < 0.01);
-  const sumOther = res.reduce((a, st, i) => a + (cand[i] ? 0 : st.len), 0);
 
-  // Só comprime se, sem comprimir, os demais estágios ficariam ilegíveis.
-  const MIN_LEGIVEL = 60; // px
-  const comprimir = (sumOther / total) * plotW < MIN_LEGIVEL && sumOther > 0;
-  const nCand = cand.filter(Boolean).length;
-  // Largura comprimida é proporcional AOS OUTROS, não ao total.
-  const useCand = nCand ? (sumOther * 0.35) / nCand : 0;
+  // Comprime APENAS um estágio dominante — um que sozinho esmaga o resto.
+  // Sem isso, um protocolo com muitas sustentações longas (Slow Wave tem 37
+  // estágios, quase todos constantes) teria dois terços do gráfico comprimido.
+  const MIN_LEGIVEL = 60;   // px
+  const DOMINANTE = 0.60;   // fração do total
+  let alvo = -1, maiorLen = 0;
+  res.forEach((st, i) => {
+    if (cand[i] && st.len > maiorLen) { maiorLen = st.len; alvo = i; }
+  });
+  const dominante = alvo >= 0 && (maiorLen / total) > DOMINANTE;
+  const restante = total - maiorLen;
+  const comprimir = dominante && (restante / total) * plotW < MIN_LEGIVEL && restante > 0;
+  const useCand = comprimir ? restante * 0.35 : 0;
 
-  const eff = res.map((st, i) => (comprimir && cand[i])
+  const eff = res.map((st, i) => (comprimir && i === alvo)
     ? { use: useCand, broken: true }
     : { use: st.len, broken: false });
 
@@ -3481,6 +3583,8 @@ function renderSessionGraph(entry, opts) {
     return v;
   };
   const valueAt = (t) => proto ? freqAtTime(res, t, offAt(t)) : stepHz(t);
+  fillStageParams(res);
+  const mudo = (t) => { const a = amAtTime(res, t); return a !== null && a <= 0.001; };
 
   const freqs = res.map(s => s.freq).concat([startHz],
     evs.map(e => (e.hz !== undefined ? e.hz : res[0].freq)));
@@ -3550,8 +3654,9 @@ function renderSessionGraph(entry, opts) {
       if (b.x < x0 || a.x > x1) continue;
       const midT = (a.t + b.t) / 2;
       const hz = valueAt(midT);
+      const cor = mudo(midT) ? NEUTRO : freqToColor(hz);
       const past = midT <= elapsed;
-      svg += `<line x1="${Math.max(a.x, x0).toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${Math.min(b.x, x1).toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${freqToColor(hz)}" stroke-width="${compact ? 1.8 : 2.2}" stroke-linecap="round" opacity="${past ? 0.95 : 0.22}"/>`;
+      svg += `<line x1="${Math.max(a.x, x0).toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${Math.min(b.x, x1).toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${cor}" stroke-width="${compact ? 1.8 : 2.2}" stroke-linecap="round" opacity="${past ? 0.95 : 0.22}"/>`;
     }
   });
 
